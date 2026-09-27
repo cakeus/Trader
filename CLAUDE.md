@@ -8,7 +8,7 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 - A run starts with $10 and a 4-slot bag. Each unit of a good takes one slot, and goods don't stack.
 - Each day you pick one of 3 locations on the map. The map tooltips show which goods each location buys and sells today.
 - At the location you click an actor to trade: click for 1 unit, shift-click for the max. Then you press End Day.
-- Quota *n* is $25·2ⁿ, due at the end of day 7·(*n*+1). A quota counts as met as soon as your cash reaches it, even if you spend below it afterwards. Missing a quota ends the run.
+- Quota *n* is $25·`CONFIG.quotaGrowth`ⁿ (×1.6, rounded to $5: $25, $40, $65, $100, $165, …), due at the end of day 7·(*n*+1). A quota counts as met as soon as your cash reaches it, even if you spend below it afterwards. Missing a quota ends the run.
 - Meeting a quota earns **stars** (see below), which you spend at the Dealer.
 - The pause menu (Menu button or Esc) has sound on/off, Save & Quit, Abandon Run, and the run's seed.
 
@@ -30,27 +30,41 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 
 - **Stars:** `updateQuota` awards them the moment a quota is met: the quota's base `stars` (3, then 6 from quota 2 on; `STAR_STEP`/`STAR_CAP` in `run.ts`) plus `EARLY_STAR` (1) per day before the due day. `starsAwarded`/`earlyBonus` are recorded on the quota for the QuotaResult screen.
 - **Dealer** (`src/game/dealer.ts`, content in `public/data/dealer.json`): not one of the 16 actors, so `dealActors` ignores him. `rollDealer` runs in `startDay`: nothing until stars have been earned, a guaranteed first visit the next morning (`dealerSeen`), then `CONFIG.dealer.chance` (50%) per day, at one random run location. He stands as a 4th card at the location's `dealerSlot`. Deterministic for (seed, day).
-- **Deals** (one per visit, uniform over `eligibleDeals`, each costing `CONFIG.dealer.cost`, 3★):
-  - `bag`: +1 capacity (repeatable).
-  - `discount`: `dealerDiscount` (per good in `goods.json`) off every seller of that good, floor $1, applied immediately. Doesn't stack: a discounted good is never offered again.
-  - `sellChance`: +`sellChanceStep` (5%) to buyers' great and amazing weights, taken from good (`buyerWeights` in `economy.ts`). Applies from the next day's roll; offered until buyers' good weight would drop below `minGoodWeight`.
-- UI: HUD star counter (quota uses `icon_flag`), map tooltip line, card + tooltip + `DealerDialog` (`src/scenes/dealer.ts`).
+- **Deals:** each visit brings up to `CONFIG.dealer.offers` (3) distinct deals from `eligibleDeals`, drawn by `CONFIG.dealer.weight` (rares 0.25, others 1) and bought separately. **Every deal can be bought only once per run** (`perks.owned`, keyed by `dealKey`). Once nothing is left, he stops coming.
+  - `bag` I / II / III: +1 capacity each, costing `bagCosts` (3 / 4 / 5★). Only the next tier is offered, so each needs the one before.
+  - `discount` (per good, 3★): `dealerDiscount` from `goods.json` off every seller of that good, floor $1, applied immediately.
+  - `stock` (per good, 3★): +`stockStep` (1) daily stock for every seller of that good, applied immediately.
+  - `sellChance` (per good, 3★): +`sellChanceStep` (5%) to that good's buyers' great and amazing weights, taken from good (`buyerWeights(state, good)` in `economy.ts`). Applies from the next day's roll.
+  - Rare `discountAll` / `stockAll` (6★): $`discountAll` off / +`stockAll` stock for every good's sellers. They stack with the per-good deals (`sellerPrice` and `extraStock` in `economy.ts`).
+  - Rare `sellChanceAll` (6★): +`sellChanceAll` (10%) to every good's buyers' great and amazing weights. It stacks with the per-good `sellChance`.
+- UI: HUD star counter (quota uses `icon_flag`), map tooltip line, card + tooltip, and `DealerDialog` (`src/scenes/dealer.ts`), laid out like the old trade dialog with one clickable row per deal. Rares get a purple "Rare" tag and a 2×2 grid of the goods' small icons.
 
 ## Balance and the scaling wall (next phase: earnable player scaling)
 
 - **First-quota sim** (`npm test`, `tests/sim.test.ts`): the best-possible player reaches it 100% of the time, the sensible player about 63% and the random player about 13%. That's accepted as "easier for now".
-- **Long-run sim** (`balance: long run` in `tests/sim.test.ts`, 500 runs, log only): the share of runs still alive after each quota. Sim players buy any affordable Dealer deal.
+- **Long-run sim** (`npm run sim`, `tests/longrun.test.ts`, log only; also runs under `npm test`): 500 runs to day 35 for every strategy profile in `tests/players.ts`, plus a random player. It prints the share of runs still alive after each quota, with star and deal stats. Env overrides: `RUNS`, `DAYS`, `GROWTH=2,1.6,1.5` to compare quota growth factors, and `DEALER=0.5` for the Dealer chance. All profiles value goods at perk-adjusted prices.
+  - **Frugal:** plays the market well and ignores the Dealer.
+  - **Impulse:** buys every affordable deal in the order shown (the old sim; also the first-quota sim's player).
+  - **Packrat:** only buys bag upgrades, then rares.
+  - **Specialist:** commits to one good (its first per-good deal), buys only that good's deals plus rares and bags, and favours it ×1.5 when trading and choosing a location.
+  - **Dealer chaser:** adds +10 to the Dealer's location whenever it has 3+ stars, and buys by value: bag > rare discount/buyers > rare stock > discount > buyers > stock.
 
-  | Player | Day 7 | Day 14 | Day 21 | Day 28+ |
-  |---|---|---|---|---|
-  | Sensible | 62% | 40% | 7% | 0% |
-  | Random | 15% | 2% | 0% | 0% |
+  Current tuning (quotas ×1.6, Dealer 50%, 3 one-time deals per visit). Survival is the share of runs still alive after that day:
 
-  (Before stars/Dealer: sensible 62 / 41 / 4 / 0%.)
+  | Profile | Day 14 | Day 21 | Day 28 | Day 35 | Stars got / spent | Bags bought |
+  |---|---|---|---|---|---|---|
+  | Frugal | 56% | 45% | 22% | 0% | 13.9 / 0 | 0 |
+  | Impulse | 56% | 51% | 41% | 16% | 17.9 / 14.2 | 0.4 |
+  | Packrat | 56% | 45% | 28% | 3% | 14.8 / 3.5 | 0.5 |
+  | Specialist | 56% | 50% | 38% | 11% | 17.0 / 7.2 | 0.5 |
+  | Dealer chaser | 59% | 55% | 49% | 29% | 20.9 / 19.0 | 0.8 |
+  | Random | 7% | 2% | 1% | 0% | 1.4 / 1.1 | 0 |
 
-- **Why:** income is roughly linear while quotas double every week. Four bag slots at about $1.40–$2.30 expected profit per unit, with one location a day, earn roughly $30–60 a week.
+  Every profile is at 62% on day 7. Chasing the Dealer wins by a wide margin. Picky profiles starve: the bag upgrade is 1 of 16 deals in the pool (rares are drawn at a quarter weight), so it shows up on only about 1 in 5 visits. A Specialist sees its own good's deals equally rarely.
+
+- **Why:** income is roughly linear while quotas grow geometrically (they used to double every week; now ×1.6). Four bag slots at about $1.40–$2.30 expected profit per unit, with one location a day, earn roughly $30–60 a week.
 - **Scaling knobs:**
-  - `CAPACITY`, `START_CASH`, `FIRST_QUOTA`, `QUOTA_DAYS` and `quotaFor()` in `src/game/run.ts`.
+  - `CAPACITY`, `START_CASH`, `FIRST_QUOTA`, `QUOTA_DAYS` and `quotaFor()` in `src/game/run.ts`, and `CONFIG.quotaGrowth`.
   - `STAR_STEP`, `STAR_CAP`, `EARLY_STAR` in `run.ts`.
   - `CONFIG` in `src/game/config.ts` (including `CONFIG.dealer`).
   - Price lists and `qty` in `public/data/actors.json`.
@@ -61,7 +75,7 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 - `game/` is the web game.
   - `npm run dev` starts a dev server on http://localhost:5173. The Vite watcher uses polling because Windows file events were being missed.
   - `?timer` runs the game loop on setTimeout, so it keeps ticking in a hidden window during automated testing.
-  - `npm test` runs vitest: `tests/economy.test.ts` for the rules and `tests/sim.test.ts` for balance. `npm run build` typechecks and bundles the game.
+  - `npm test` runs vitest: `tests/economy.test.ts` for the rules and `tests/sim.test.ts` (first quota) and `tests/longrun.test.ts` (long run, log only) for balance; `npm run sim` shows the long-run table. `npm run build` typechecks and bundles the game.
   - `src/engine/`: the platform layer. This covers screen scaling, input, the bitmap font, immediate-mode UI (`ui.ts`), WebAudio sfx and the seeded RNG (`rng.ts`, `rngFor(seed, ...keys)`).
   - `src/game/`: pure logic with no DOM.
     - `run.ts`: the run state, trading, quotas and `endDay`.

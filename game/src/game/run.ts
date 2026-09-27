@@ -19,7 +19,7 @@ export const EARLY_STAR = 1;
 export function quotaFor(index: number): Quota {
   return {
     index,
-    amount: FIRST_QUOTA * 2 ** index,
+    amount: Math.round((FIRST_QUOTA * CONFIG.quotaGrowth ** index) / 5) * 5,
     dueDay: QUOTA_DAYS * (index + 1),
     met: false,
     stars: Math.min(STAR_STEP * (index + 1), STAR_CAP),
@@ -33,7 +33,7 @@ export function newRun(data: GameData, seed: number): RunState {
     .slice(0, RUN_LOCATIONS)
     .map((id) => ({ id, actorIds: [] as string[] }));
   const state: RunState = {
-    version: 4,
+    version: 7,
     seed,
     day: 1,
     cash: START_CASH,
@@ -45,7 +45,7 @@ export function newRun(data: GameData, seed: number): RunState {
     market: {},
     stats: { bought: 0, sold: 0, quotasMet: 0, starsEarned: 0 },
     stars: 0,
-    perks: { discounts: {}, sellChance: 0 },
+    perks: { discounts: {}, sellChance: {}, stock: {}, discountAll: 0, stockAll: 0, sellChanceAll: 0, owned: [] },
     dealer: null,
     dealerSeen: false,
     status: 'active',

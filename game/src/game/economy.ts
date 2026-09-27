@@ -17,16 +17,22 @@ export function rollTier(r: Rng, weights: Record<Tier, number> = CONFIG.dealWeig
   return TIERS[TIERS.length - 1];
 }
 
-/** Buyers' tier weights after the Dealer's sellChance perk: great and amazing gain, good pays for both. */
-export function buyerWeights(state: RunState): Record<Tier, number> {
+/** Buyers' tier weights for a good after the Dealer's better-buyers perks (that good's, plus the rare
+ *  all-goods one): great and amazing gain, good pays for both. */
+export function buyerWeights(state: RunState, good: string): Record<Tier, number> {
   const w = CONFIG.dealWeights;
-  const s = state.perks.sellChance;
+  const s = (state.perks.sellChance[good] ?? 0) + state.perks.sellChanceAll;
   return { good: Math.max(0, w.good - 2 * s), great: w.great + s, amazing: w.amazing + s };
 }
 
-/** A seller's price after the Dealer's discount on that good (never below $1). */
+/** A seller's price after the Dealer's discounts on that good and on everything (never below $1). */
 export function sellerPrice(state: RunState, good: string, base: number): number {
-  return Math.max(1, base - (state.perks.discounts[good] ?? 0));
+  return Math.max(1, base - (state.perks.discounts[good] ?? 0) - state.perks.discountAll);
+}
+
+/** Extra daily stock a seller of `good` has from the Dealer's stock deals. */
+export function extraStock(state: RunState, good: string): number {
+  return (state.perks.stock[good] ?? 0) + state.perks.stockAll;
 }
 
 /** Today's deal tier, price and stock/demand for every actor present in the run.
@@ -38,11 +44,11 @@ export function rollMarket(data: GameData, state: RunState): Record<string, Offe
       const seller = data.actors[actorId].role === 'supplier';
       for (const ag of data.actors[actorId].goods) {
         const r = rngFor(state.seed, 'market', state.day, actorId, ag.good);
-        const tier = rollTier(r, seller ? CONFIG.dealWeights : buyerWeights(state));
+        const tier = rollTier(r, seller ? CONFIG.dealWeights : buyerWeights(state, ag.good));
         market[offerKey(actorId, ag.good)] = {
           tier,
           price: seller ? sellerPrice(state, ag.good, ag.prices[tier]) : ag.prices[tier],
-          left: r.int(ag.qtyMin, ag.qtyMax),
+          left: r.int(ag.qtyMin, ag.qtyMax) + (seller ? extraStock(state, ag.good) : 0),
         };
       }
     }

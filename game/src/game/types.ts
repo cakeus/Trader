@@ -108,26 +108,48 @@ export interface BagItem {
 }
 
 /** One upgrade the Dealer can sell. */
-export type DealerDeal = { kind: 'bag' } | { kind: 'discount'; good: string } | { kind: 'sellChance' };
+export type DealerDeal =
+  | { kind: 'bag'; tier: number }
+  | { kind: 'discount'; good: string }
+  | { kind: 'sellChance'; good: string }
+  | { kind: 'stock'; good: string }
+  | { kind: 'discountAll' }
+  | { kind: 'stockAll' }
+  | { kind: 'sellChanceAll' };
+
+/** One of the Dealer's offers today. */
+export interface DealerOffer {
+  deal: DealerDeal;
+  cost: number;
+  sold: boolean;
+}
 
 /** Today's Dealer visit. */
 export interface DealerVisit {
   locationId: string;
-  deal: DealerDeal;
-  cost: number;
-  sold: boolean;
+  /** Distinct deals, each bought separately. */
+  offers: DealerOffer[];
 }
 
 /** Permanent upgrades bought from the Dealer this run. */
 export interface Perks {
   /** Dollars off seller prices, per good. */
   discounts: Record<string, number>;
-  /** Added to buyers' great and amazing weights (and taken twice from good). */
-  sellChance: number;
+  /** Added to buyers' great and amazing weights (and taken twice from good), per good. */
+  sellChance: Record<string, number>;
+  /** Extra daily stock for every seller, per good. */
+  stock: Record<string, number>;
+  /** Dollars off every seller price, and extra daily stock for every seller (the rare deals). */
+  discountAll: number;
+  stockAll: number;
+  /** Added to every buyer's great and amazing weights (the rare better-buyers deal). */
+  sellChanceAll: number;
+  /** Keys (`dealKey`) of every deal bought this run; each deal can be bought only once. */
+  owned: string[];
 }
 
 export interface RunState {
-  version: 4;
+  version: 7;
   seed: number;
   day: number;
   cash: number;

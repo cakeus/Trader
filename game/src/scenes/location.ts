@@ -2,7 +2,7 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
-import { describeDeal } from '../game/dealer';
+import { describeDeal, isRare } from '../game/dealer';
 import { actorsAt, avgPaid, endDay, offer } from '../game/run';
 import type { Point, Role, Tier } from '../game/types';
 import { DealerDialog } from './dealer';
@@ -84,21 +84,20 @@ export class LocationScene implements Scene {
   private dealerTooltip(ui: Ui): void {
     const { data } = this.app;
     const run = this.app.run!;
-    const d = run.dealer!;
-    const deal = describeDeal(data, d.deal);
-    const w = 220;
-    const body = ui.font.wrap(deal.body, w - 16);
-    const lh = ui.font.lineHeight;
-    const status = d.sold
-      ? { text: 'Sold out. Come back another day.', color: C.redLight }
-      : run.stars < d.cost
-        ? { text: `Costs ${d.cost} stars (you have ${run.stars})`, color: C.redLight }
-        : { text: `Costs ${d.cost} stars`, color: C.gold };
-    ui.tooltip(w, 30 + body.length * lh + 22, (x, y) => {
+    const rows = run.dealer!.offers.map((o) => ({
+      title: describeDeal(data, o.deal).title + (isRare(o.deal) ? ' (Rare)' : ''),
+      note: o.sold ? 'Sold' : `${o.cost} stars`,
+      color: o.sold ? C.muted : run.stars < o.cost ? C.redLight : C.gold,
+    }));
+    const w = Math.max(200, 32 + Math.max(...rows.map((r) => ui.font.measure(`${r.title}  ${r.note}`))));
+    ui.tooltip(w, 30 + rows.length * 12 + 18, (x, y) => {
       ui.text(data.dealer.name, x, y, C.gold);
-      ui.text(deal.title, x, y + 14, C.cream);
-      body.forEach((l, i) => ui.text(l, x, y + 28 + i * lh, C.muted));
-      ui.text(status.text, x, y + 32 + body.length * lh, status.color);
+      ui.text('Sells:', x, y + 12, C.muted);
+      rows.forEach((r, i) => {
+        ui.text(r.title, x, y + 24 + i * 12, r.color === C.muted ? C.muted : C.cream);
+        ui.text(r.note, x + w - 16, y + 24 + i * 12, r.color, { align: 'right' });
+      });
+      ui.text(`You have ${run.stars} stars`, x, y + 28 + rows.length * 12, C.muted);
     });
   }
 

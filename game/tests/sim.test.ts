@@ -1,88 +1,14 @@
 /**
  * Balance simulation for the first quota ($10 -> $25 by day 7).
- * Players visit one location per day, sell what they can, then restock
- * greedily by expected margin. Location choice differs per policy.
+ * The players live in players.ts; the long-run sim is longrun.test.ts.
  */
 import { describe, expect, it } from 'vitest';
 import { rngFor } from '../src/engine/rng';
-import { CONFIG } from '../src/game/config';
-import { buyDealerDeal } from '../src/game/dealer';
-import { actorsAt, buy, endDay, maxSell, newRun, offer, sell, visit } from '../src/game/run';
-import { type GameData, type RunState, TIERS } from '../src/game/types';
-import { loadTestData } from './helpers';
+import { endDay, newRun } from '../src/game/run';
+import type { RunState } from '../src/game/types';
+import { clone, data, type Policy, random, sensible, tradeAt } from './players';
 
-const data = loadTestData();
 const SEEDS = 120;
-
-const clone = (s: RunState): RunState => JSON.parse(JSON.stringify(s));
-
-/** Tier-weighted average price for an actor's good. */
-function expectedPrice(d: GameData, actorId: string, good: string): number {
-  const ag = d.actors[actorId].goods.find((g) => g.good === good)!;
-  return TIERS.reduce((sum, t) => sum + CONFIG.dealWeights[t] * ag.prices[t], 0);
-}
-
-/** Expected resale price for a good. Actors are re-dealt daily, so average over every buyer of it. */
-function resale(good: string): number {
-  const buyers = Object.keys(data.actors).filter(
-    (id) => data.actors[id].role === 'buyer' && data.actors[id].goods.some((g) => g.good === good),
-  );
-  return buyers.reduce((sum, id) => sum + expectedPrice(data, id, good), 0) / buyers.length;
-}
-
-function tradeAt(s: RunState, loc: string): void {
-  visit(s, loc);
-  // any affordable dealer upgrade is worth it
-  if (s.dealer?.locationId === loc) buyDealerDeal(data, s);
-  const actors = actorsAt(s, loc);
-  // sell: highest-paying buyer first
-  const sales = actors
-    .filter((a) => data.actors[a].role === 'buyer')
-    .flatMap((a) => data.actors[a].goods.map((g) => ({ a, good: g.good, price: offer(s, a, g.good).price })))
-    .sort((x, y) => y.price - x.price);
-  for (const t of sales) sell(data, s, t.a, t.good, maxSell(s, t.a, t.good));
-  if (s.day >= s.quota.dueDay) return;
-  // buy: best expected margin first
-  const buys = actors
-    .filter((a) => data.actors[a].role === 'supplier')
-    .flatMap((a) =>
-      data.actors[a].goods.map((g) => {
-        const p = offer(s, a, g.good).price;
-        return { a, good: g.good, margin: resale(g.good) - p, ratio: resale(g.good) / p };
-      }),
-    )
-    .filter((t) => t.margin > 0)
-    .sort((x, y) => y.ratio - x.ratio);
-  for (const t of buys) buy(data, s, t.a, t.good, 99);
-}
-
-/** Expected value of visiting `loc` with the current bag (what a thoughtful player estimates). */
-function score(s: RunState, loc: string): number {
-  let v = 0;
-  const bag = s.inventory.map((it) => it.good);
-  for (const a of actorsAt(s, loc)) {
-    const def = data.actors[a];
-    if (def.role !== 'buyer') continue;
-    for (const g of def.goods) {
-      const n = bag.filter((x) => x === g.good).length;
-      v += n * expectedPrice(data, a, g.good);
-      for (let i = 0; i < n; i++) bag.splice(bag.indexOf(g.good), 1);
-    }
-  }
-  // small bonus for being able to restock with something profitable
-  for (const a of actorsAt(s, loc))
-    if (data.actors[a].role === 'supplier')
-      for (const g of data.actors[a].goods) v += 0.5 * (resale(g.good) - expectedPrice(data, a, g.good));
-  return v;
-}
-
-type Policy = (s: RunState, rng: () => number) => string;
-
-const sensible: Policy = (s) => {
-  const locs = s.locations.map((l) => l.id);
-  return locs.reduce((b, l) => (score(s, l) > score(s, b) ? l : b));
-};
-const random: Policy = (s, rng) => s.locations[Math.floor(rng() * s.locations.length)].id;
 
 function playQuota1(seed: number, policy: Policy): { met: boolean; cash: number; metDay: number } {
   const s = newRun(data, seed);
@@ -147,33 +73,5 @@ describe('balance: first quota', () => {
     expect(oracleMet / SEEDS).toBeGreaterThanOrEqual(0.9);
     expect(randomMet).toBeLessThan(sensibleMet);
     expect(randomMet / SEEDS).toBeLessThan(0.15);
-  });
-});
-
-/** Play until the run fails (or `maxQuotas` are passed); returns how many quotas were met. */
-function playRun(seed: number, policy: Policy, maxQuotas: number): number {
-  const s = newRun(data, seed);
-  const r = rngFor(seed, 'sim');
-  while (s.stats.quotasMet < maxQuotas) {
-    tradeAt(s, policy(s, () => r.next()));
-    if (endDay(data, s) === 'failed') break;
-  }
-  return s.stats.quotasMet;
-}
-
-describe('balance: long run', () => {
-  it('reports survival after each quota (log only)', () => {
-    const RUNS = 500;
-    const MAX = 6;
-    for (const [name, policy] of [['sensible', sensible], ['random', random]] as const) {
-      const alive = Array(MAX).fill(0);
-      for (let seed = 1; seed <= RUNS; seed++) {
-        const met = playRun(seed, policy, MAX);
-        for (let q = 0; q < met; q++) alive[q]++;
-      }
-      const cols = alive.map((n, q) => `day ${7 * (q + 1)}: ${Math.round((100 * n) / RUNS)}%`).join(' | ');
-      console.log(`${name.padEnd(8)} ${cols}`);
-    }
-    expect(true).toBe(true);
   });
 });
