@@ -8,7 +8,7 @@ import {
 } from '../src/game/dealer';
 import { buyerWeights, extraDemand, rollMarket, rollTier } from '../src/game/economy';
 import {
-  avgPaid, buy, buyBlock, canAct, CAPACITY, endDay, FIRST_QUOTA, guaranteedGood, newRun, offer, quotaFor, sell, sellBlock,
+  avgPaid, buy, buyBlock, canAct, CAPACITY, endDay, FIRST_QUOTA, guaranteedGood, newRun, offer, quotaFor, rescueGood, sell, sellBlock,
   START_CASH, updateQuota,
 } from '../src/game/run';
 import { type DealerDeal, type RunState, TIERS } from '../src/game/types';
@@ -164,6 +164,59 @@ describe('due-day buyer guarantee', () => {
       expect(s.day).toBe(s.quota.dueDay);
       expect(hasBuyer(s, 'old_record')).toBe(true);
     }
+  });
+});
+
+describe('stuck-day sell guarantee', () => {
+  const item = (good: string) => ({ good, paid: 1, day: 1 });
+  const buyersOf = (s: RunState, goods: string[]) =>
+    s.locations.flatMap((l) => l.actorIds).filter(
+      (id) => data.actors[id].role === 'buyer' && data.actors[id].goods.some((g) => goods.includes(g.good)),
+    );
+  /** A run on a non-due day, ending the day with `bag` and `cash`. */
+  function nextDay(seed: number, bag: string[], cash: number): RunState {
+    const s = newRun(data, seed);
+    s.inventory = bag.map(item);
+    s.cash = cash;
+    endDay(data, s);
+    expect(s.day).toBeLessThan(s.quota.dueDay);
+    return s;
+  }
+
+  it('deals in a buyer for something in a full bag', () => {
+    const bag = ['tools', 'tools', 'seashell', 'strawberry'];
+    for (let seed = 1; seed <= 200; seed++) expect(buyersOf(nextDay(seed, bag, 100), bag).length).toBeGreaterThan(0);
+  });
+
+  it('deals in a buyer when there is no money left to buy with', () => {
+    for (let seed = 1; seed <= 200; seed++) expect(buyersOf(nextDay(seed, ['old_record'], 0), ['old_record'])).not.toEqual([]);
+  });
+
+  it("leaves the deal alone when you can still buy, or already can sell, or have nothing", () => {
+    const s = newRun(data, 3);
+    s.inventory = [item('tools')];
+    s.cash = 100;
+    expect(rescueGood(data, s, [])).toBeNull(); // room and cash to buy
+    s.cash = 0;
+    const toolsBuyer = Object.keys(data.actors).find(
+      (id) => data.actors[id].role === 'buyer' && data.actors[id].goods.some((g) => g.good === 'tools'),
+    )!;
+    expect(rescueGood(data, s, [toolsBuyer])).toBeNull(); // a buyer is already here
+    expect(rescueGood(data, s, [])).toBe('tools');
+    s.inventory = [];
+    expect(rescueGood(data, s, [])).toBeNull(); // nothing to sell
+  });
+
+  it('picks a random item from the bag, not always the most common', () => {
+    const picked = new Set<string>();
+    for (let seed = 1; seed <= 60; seed++) {
+      const s = newRun(data, seed);
+      s.day = 2;
+      s.cash = 0;
+      s.inventory = [item('tools'), item('tools'), item('tools'), item('seashell')];
+      picked.add(rescueGood(data, s, [])!);
+    }
+    expect(picked).toEqual(new Set(['tools', 'seashell']));
   });
 });
 

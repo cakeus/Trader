@@ -2,7 +2,7 @@ import { rngFor } from '../engine/rng';
 import { CONFIG } from './config';
 import { dealActors } from './deal';
 import { dealerBlock, rollDealer } from './dealer';
-import { offerKey, rollMarket } from './economy';
+import { offerKey, rollMarket, sellerPrice } from './economy';
 import type { EndDayResult, GameData, Offer, Quota, RunState } from './types';
 
 export const START_CASH = 10;
@@ -59,10 +59,18 @@ export function newRun(data: GameData, seed: number): RunState {
 }
 
 /** Deal today's actors to locations, roll their deals, and see whether the Dealer visits.
- *  On a quota's due day, a buyer of the player's most common bag good is guaranteed to be present. */
+ *  On a quota's due day, a buyer of the player's most common bag good is guaranteed to be present.
+ *  On other days, if the player can't buy anything, a buyer of something in the bag is (see rescueGood). */
 function startDay(data: GameData, state: RunState): void {
-  const guarantee = state.day === state.quota.dueDay ? guaranteedGood(data, state) : undefined;
-  const dealt = dealActors(data, state.seed, state.day, state.locations.map((l) => l.id), guarantee ?? undefined);
+  const ids = state.locations.map((l) => l.id);
+  let dealt: Record<string, string[]>;
+  if (state.day === state.quota.dueDay) {
+    dealt = dealActors(data, state.seed, state.day, ids, guaranteedGood(data, state) ?? undefined);
+  } else {
+    dealt = dealActors(data, state.seed, state.day, ids);
+    const rescue = rescueGood(data, state, Object.values(dealt).flat());
+    if (rescue) dealt = dealActors(data, state.seed, state.day, ids, rescue);
+  }
   for (const loc of state.locations) loc.actorIds = dealt[loc.id];
   state.market = rollMarket(data, state);
   state.dealer = rollDealer(data, state);
@@ -93,6 +101,32 @@ export function guaranteedGood(data: GameData, state: RunState): string | null {
     if (better) best = good;
   }
   return best;
+}
+
+/** The lowest price any seller could charge today (its best tier, after the Dealer's discounts). */
+function cheapestSellerPrice(data: GameData, state: RunState): number {
+  return Math.min(
+    ...Object.values(data.actors)
+      .filter((a) => a.role === 'supplier')
+      .flatMap((a) => a.goods.map((g) => sellerPrice(state, g.good, Math.min(...Object.values(g.prices))))),
+  );
+}
+
+/** The non-due-day guarantee: if the player can't buy anything (bag full, or not enough cash for
+ *  even the cheapest possible seller) and none of `dealtIds` buys anything in the bag, a random
+ *  bag item's good gets a buyer dealt in. Null when there's nothing to rescue. Deterministic for
+ *  (seed, day, bag). */
+export function rescueGood(data: GameData, state: RunState, dealtIds: string[]): string | null {
+  if (state.inventory.length === 0) return null;
+  if (freeSlots(state) > 0 && state.cash >= cheapestSellerPrice(data, state)) return null;
+  const bag = new Set(state.inventory.map((it) => it.good));
+  const canSell = dealtIds.some((id) => {
+    const a = data.actors[id];
+    return a.role === 'buyer' && a.goods.some((g) => bag.has(g.good));
+  });
+  if (canSell) return null;
+  const r = rngFor(state.seed, 'rescue', state.day);
+  return state.inventory[r.int(0, state.inventory.length - 1)].good;
 }
 
 /** Commit to today's location. */

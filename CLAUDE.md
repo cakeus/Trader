@@ -18,6 +18,7 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 
 - **Actors:** there are 4 goods (strawberry, seashell, old record, tools), each with 2 sellers and 2 buyers, for 16 actors in total. Every day `dealActors` (`src/game/deal.ts`) deals 9 of them out, 3 per location. No actor is in two places at once, and each good appears on at most one actor per location. Any actor can appear anywhere. The deal is deterministic for (seed, day).
 - **Due-day guarantee:** on a quota's due day, `guaranteedGood` (`src/game/run.ts`) makes sure at least one buyer for your most common bag good is dealt in. On a tie it picks the good with the higher Good-tier buyer price. An empty bag gets no guarantee.
+- **Stuck-day guarantee:** on other days, `rescueGood` (`run.ts`) checks the normal deal. If you can't buy anything (bag full, or less cash than the cheapest price any seller could charge) and no dealt buyer takes anything in your bag, the day is re-dealt with a buyer for a random item from the bag. Otherwise the deal is left alone.
 - **Deal tiers:**
   - Each actor good has a `prices` list with `good`, `great` and `amazing` tiers.
   - Each day one tier is rolled per actor good using `CONFIG.dealWeights` (50/30/20).
@@ -45,7 +46,7 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 
 ## Balance and the scaling wall (next phase: earnable player scaling)
 
-- **First-quota sim** (`npm test`, `tests/sim.test.ts`): the best-possible player reaches it 100% of the time, the sensible player about 63% and the random player about 13%. That's accepted as "easier for now".
+- **First-quota sim** (`npm test`, `tests/sim.test.ts`): the best-possible player reaches it 100% of the time, the sensible player about 65% and the random player about 13%. That's accepted as "easier for now".
 - **Long-run sim** (`npm run sim`, `tests/longrun.test.ts`, log only; also runs under `npm test`): 500 runs to day 35 for every strategy profile in `tests/players.ts`, plus a random player. It prints the share of runs still alive after each quota, with star and deal stats. Env overrides: `RUNS`, `DAYS`, `GROWTH=2,1.6,1.5` to compare quota growth factors, and `DEALER=0.5` for the Dealer chance. All profiles value goods at perk-adjusted prices.
   - **Frugal:** plays the market well and ignores the Dealer.
   - **Impulse:** buys every affordable deal in the order shown (the old sim; also the first-quota sim's player).
@@ -57,14 +58,14 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 
   | Profile | Day 14 | Day 21 | Day 28 | Day 35 | Stars got / spent | Bags bought |
   |---|---|---|---|---|---|---|
-  | Frugal | 56% | 45% | 22% | 0% | 13.9 / 0 | 0 |
-  | Impulse | 55% | 49% | 41% | 22% | 18.7 / 14.9 | 0.4 |
-  | Packrat | 55% | 50% | 42% | 24% | 18.8 / 12.7 | 0.7 |
-  | Specialist | 56% | 49% | 42% | 25% | 18.7 / 13.5 | 0.5 |
-  | Dealer chaser | 57% | 54% | 49% | 37% | 22.4 / 20.4 | 0.8 |
-  | Random | 7% | 3% | 2% | 0% | 1.5 / 1.2 | 0.1 |
+  | Frugal | 58% | 47% | 25% | 0% | 14.7 / 0 | 0 |
+  | Impulse | 57% | 53% | 45% | 26% | 20.0 / 16.1 | 0.5 |
+  | Packrat | 57% | 53% | 44% | 27% | 19.8 / 13.3 | 0.8 |
+  | Specialist | 58% | 52% | 44% | 26% | 19.9 / 14.5 | 0.5 |
+  | Dealer chaser | 59% | 56% | 51% | 40% | 23.5 / 21.3 | 0.8 |
+  | Random | 7% | 3% | 2% | 0% | 1.7 / 1.4 | 0.1 |
 
-  Every profile is at 62% on day 7. Chasing the Dealer still wins. Drawing kinds evenly helped the picky profiles a lot (Packrat went from 3% to 24% on day 35): bags and the all-goods deals now come up far more often than when they were 1 deal among many or rares at a quarter weight.
+  Every profile is at 64% on day 7 (the stuck-day guarantee added about 2 points across the board). Chasing the Dealer still wins. Drawing kinds evenly helped the picky profiles a lot (Packrat went from 3% to 24% on day 35): bags and the all-goods deals now come up far more often than when they were 1 deal among many or rares at a quarter weight.
 
 - **Why:** income is roughly linear while quotas grow geometrically (they used to double every week; now ×1.6). Four bag slots at about $1.40–$2.30 expected profit per unit, with one location a day, earn roughly $30–60 a week.
 - **Scaling knobs:**
