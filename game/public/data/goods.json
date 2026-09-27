@@ -1,0 +1,10 @@
+[
+  { "id": "strawberry", "name": "Strawberry", "icon": "assets/goods/strawberry.png", "iconSmall": "assets/goods/strawberry_8.png",
+    "blurb": "Plump, sun-warmed, and only slightly nibbled." },
+  { "id": "seashell", "name": "Seashell", "icon": "assets/goods/seashell.png", "iconSmall": "assets/goods/seashell_8.png",
+    "blurb": "Hold it to your ear. Is that the sea, or your rent?" },
+  { "id": "old_record", "name": "Old Record", "icon": "assets/goods/old_record.png", "iconSmall": "assets/goods/old_record_8.png",
+    "blurb": "Crackly jazz from a decade nobody remembers." },
+  { "id": "tools", "name": "Tools", "icon": "assets/goods/tools.png", "iconSmall": "assets/goods/tools_8.png",
+    "blurb": "A sturdy hammer. Every job looks like a nail now." }
+]
