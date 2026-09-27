@@ -1,25 +1,18 @@
 import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
-import { buyDealerDeal, type DealerBlock, dealerBlock, dealGood, describeDeal, isRare } from '../game/dealer';
-import type { DealerDeal } from '../game/types';
+import { buyDealerDeal, type DealerBlock, dealerBlock, describeDeal } from '../game/dealer';
 import { drawBag, drawPortrait, STAR_INK } from './common';
+import { drawStamp } from './stampArt';
 
 const ROW_H = 44;
-/** Rare-deal label on the paper panel. */
-const RARE_INK = '#8a4ab8';
 
 const REASON: Record<Exclude<DealerBlock, null>, string> = {
   sold: 'Sold',
   noStars: 'Not enough stars',
 };
 
-/** 16x16 UI icon for deals that aren't about a specific good. */
-const DEAL_ICON: Partial<Record<DealerDeal['kind'], string>> = {
-  bag: 'assets/ui/icon_bag.png',
-};
-
-/** The Dealer's window, laid out like the trade dialog: one row per deal, click a row to buy it. */
+/** The Dealer's window, laid out like the trade dialog: one row per stamp, click a row to buy it. */
 export class DealerDialog implements Scene {
   constructor(private app: App) {}
 
@@ -46,7 +39,7 @@ export class DealerDialog implements Scene {
     const avail = r.w - 114;
     const nameScale = ui.font.measure(dealer.name, 2) <= avail ? 2 : 1;
     ui.text(dealer.name, tx, r.y + 16, C.ink, { scale: nameScale });
-    ui.text('Trades for stars', tx, r.y + 38, STAR_INK);
+    ui.text('Trades stamps for stars', tx, r.y + 38, STAR_INK);
     ui.para(dealer.blurb, tx, r.y + 54, avail, C.inkSoft);
 
     // rows
@@ -56,23 +49,17 @@ export class DealerDialog implements Scene {
       const block = dealerBlock(run, i);
       const hot = ui.hover(row);
       ui.nine(hot && !block ? 'row_hover' : 'row', row);
-      const good = dealGood(o.deal);
-      if (good) ui.image(app.data.goods[good].icon, row.x + 6, row.y + 6);
-      else if (isRare(o.deal))
-        Object.values(app.data.goods).slice(0, 4).forEach((g, j) => {
-          ui.image(g.iconSmall, row.x + 11 + (j % 2) * 13, row.y + 11 + Math.floor(j / 2) * 13);
-        });
-      else ui.image(DEAL_ICON[o.deal.kind]!, row.x + 14, row.y + 14);
-      ui.text(deal.title, row.x + 46, row.y + 9, o.sold ? C.inkSoft : C.ink);
-      if (isRare(o.deal)) ui.text('Rare', row.x + 52 + ui.font.measure(deal.title), row.y + 9, RARE_INK);
-      ui.text(deal.body, row.x + 46, row.y + 24, C.inkSoft);
+      drawStamp(app, ui, o.deal, row.x + 1, row.y + 1);
+      ui.text(deal.title, row.x + 50, row.y + 9, o.sold ? C.inkSoft : C.ink);
+      ui.text(deal.body, row.x + 50, row.y + 24, C.inkSoft);
 
       const right = row.x + row.w - 10;
-      if (block) {
-        ui.text(REASON[block], right, row.y + 17, block === 'sold' ? C.inkSoft : C.red, { align: 'right' });
+      if (block === 'sold') {
+        ui.text(REASON[block], right, row.y + 17, C.inkSoft, { align: 'right' });
       } else {
+        // the cost, in red when you can't afford it
         ui.image('assets/ui/icon_star.png', right - 16, row.y + 14);
-        ui.text(`${o.cost}`, right - 20, row.y + 12, C.ink, { align: 'right', scale: 2 });
+        ui.text(`${o.cost}`, right - 20, row.y + 12, block ? C.red : C.ink, { align: 'right', scale: 2 });
       }
 
       if (ui.clicked(row)) this.buy(ui, i);

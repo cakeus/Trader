@@ -4,11 +4,11 @@ import { CONFIG } from '../src/game/config';
 import { buildData } from '../src/game/data';
 import { dealActors } from '../src/game/deal';
 import {
-  BAG_TIERS, buyDealerDeal, dealCost, dealerBlock, eligibleDeals, isRare, rollDealer,
+  allDeals, BAG_TIERS, buyDealerDeal, dealCost, dealerBlock, dealFromKey, dealKey, eligibleDeals, isRanked, isUniversal, rollDealer,
 } from '../src/game/dealer';
-import { buyerWeights, rollMarket, rollTier } from '../src/game/economy';
+import { buyerWeights, extraDemand, rollMarket, rollTier } from '../src/game/economy';
 import {
-  avgPaid, buy, buyBlock, CAPACITY, endDay, FIRST_QUOTA, guaranteedGood, newRun, offer, quotaFor, sell, sellBlock,
+  avgPaid, buy, buyBlock, canAct, CAPACITY, endDay, FIRST_QUOTA, guaranteedGood, newRun, offer, quotaFor, sell, sellBlock,
   START_CASH, updateQuota,
 } from '../src/game/run';
 import { type DealerDeal, type RunState, TIERS } from '../src/game/types';
@@ -486,7 +486,7 @@ describe('dealer', () => {
     s.dealer = { locationId: s.locations[0].id, offers: pool.map((deal) => ({ deal, cost: 0, sold: false })) };
     pool.forEach((_, i) => buyDealerDeal(data, s, i));
     const left = eligibleDeals(data, s);
-    for (const d of pool) if (d.kind !== 'bag') expect(left).not.toContainEqual(d);
+    for (const d of pool) if (!isRanked(d)) expect(left).not.toContainEqual(d);
   });
 
   it('bag upgrades come one at a time, each after the one before, then stop', () => {
@@ -551,12 +551,12 @@ describe('dealer', () => {
     }
   });
 
-  it('rare deals hit every good and stack with the per-good ones', () => {
+  it('all-goods deals hit every good and stack with the per-good ones', () => {
     const s = withDealer(9, [
       { kind: 'discount', good: 'tools' },
       { kind: 'discountAll' },
       { kind: 'stock', good: 'tools' },
-      { kind: 'stockAll' },
+      { kind: 'stockAll', tier: 1 },
     ], 99);
     const tools = withActor(s, 'supplier', 'tools');
     const berry = withActor(s, 'supplier', 'strawberry');
@@ -568,24 +568,81 @@ describe('dealer', () => {
     expect(offer(s, tools, 'tools').left).toBe(was.tl + stockStep + stockAll);
     expect(offer(s, berry, 'strawberry').price).toBe(Math.max(1, was.bp - discountAll));
     expect(offer(s, berry, 'strawberry').left).toBe(was.bl + stockAll);
-    expect(eligibleDeals(data, s).filter(isRare)).toEqual([{ kind: 'sellChanceAll' }]);
+    // the next Overflowing Supply rank is up; the other all-goods deals are still at rank I
+    expect(eligibleDeals(data, s).filter(isUniversal)).toEqual([
+      { kind: 'stockAll', tier: 2 },
+      { kind: 'buyerStockAll', tier: 1 },
+      { kind: 'sellChanceAll', tier: 1 },
+    ]);
   });
 
-  it('rare deals are drawn less often than ordinary ones', () => {
-    let rare = 0;
-    let ordinary = 0;
-    for (let seed = 0; seed < 200; seed++) {
+  it('picks each kind of deal evenly, then the good within it', () => {
+    const kinds = new Map<string, number>();
+    const stockGoods = new Map<string, number>();
+    const seeds = 900;
+    for (let seed = 0; seed < seeds; seed++) {
       const s = newRun(data, seed);
       s.stats.starsEarned = 1;
-      const v = rollDealer(data, s)!;
-      for (const o of v.offers) {
-        if (isRare(o.deal)) rare++;
-        else if (o.deal.kind === 'sellChance') ordinary++;
-      }
+      // the first offer is drawn from the full pool, so every kind has the same chance
+      const first = rollDealer(data, s)!.offers[0].deal;
+      kinds.set(first.kind, (kinds.get(first.kind) ?? 0) + 1);
+      if (first.kind === 'stock') stockGoods.set(first.good, (stockGoods.get(first.good) ?? 0) + 1);
     }
-    // 2 rares at weight 0.25 vs one ordinary deal at weight 1
-    expect(rare).toBeLessThan(ordinary);
-    expect(rare).toBeGreaterThan(0);
+    const all = new Set(allDeals(data).map((d) => d.kind));
+    expect(kinds.size).toBe(all.size);
+    const even = seeds / all.size;
+    for (const n of kinds.values()) {
+      expect(n).toBeGreaterThan(even * 0.6);
+      expect(n).toBeLessThan(even * 1.4);
+    }
+    // stock (one per good) is as likely as stockAll (one deal)
+    expect(Math.abs(kinds.get('stock')! - kinds.get('stockAll')!)).toBeLessThan(even * 0.6);
+    expect(stockGoods.size).toBe(Object.keys(data.goods).length);
+  });
+
+  it('ranked all-goods deals come one rank at a time and stack', () => {
+    const s = newRun(data, 11);
+    const berry = withActor(s, 'supplier', 'strawberry');
+    const was = offer(s, berry, 'strawberry').left;
+    for (const kind of ['stockAll', 'buyerStockAll', 'sellChanceAll'] as const) {
+      for (let tier = 1; tier <= CONFIG.dealer.ranks[kind]; tier++) {
+        const next = eligibleDeals(data, s).filter((d) => d.kind === kind);
+        expect(next).toEqual([{ kind, tier }]);
+        s.dealer = { locationId: s.locations[0].id, offers: [{ deal: next[0], cost: 0, sold: false }] };
+        buyDealerDeal(data, s, 0);
+      }
+      expect(eligibleDeals(data, s).filter((d) => d.kind === kind)).toEqual([]);
+    }
+    const { ranks } = CONFIG.dealer;
+    expect(s.perks.stockAll).toBe(ranks.stockAll * CONFIG.dealer.stockAll);
+    expect(offer(s, berry, 'strawberry').left).toBe(was + ranks.stockAll * CONFIG.dealer.stockAll);
+    expect(s.perks.buyerStockAll).toBe(ranks.buyerStockAll * CONFIG.dealer.buyerStockAll);
+    expect(s.perks.sellChanceAll).toBeCloseTo(ranks.sellChanceAll * CONFIG.dealer.sellChanceAll);
+  });
+
+  it("demand deals raise buyers' daily demand, today and from then on", () => {
+    const s = withDealer(12, [{ kind: 'buyerStock', good: 'seashell' }, { kind: 'buyerStockAll', tier: 1 }], 99);
+    const shell = withActor(s, 'buyer', 'seashell');
+    const tools = withActor(s, 'buyer', 'tools');
+    const seller = withActor(s, 'supplier', 'tools');
+    const was = { shell: offer(s, shell, 'seashell').left, tools: offer(s, tools, 'tools').left, seller: offer(s, seller, 'tools').left };
+    s.dealer!.offers.forEach((_, i) => buyDealerDeal(data, s, i));
+    const { buyerStockStep: step, buyerStockAll: all } = CONFIG.dealer;
+    expect(offer(s, shell, 'seashell').left).toBe(was.shell + step + all);
+    expect(offer(s, tools, 'tools').left).toBe(was.tools + all);
+    expect(offer(s, seller, 'tools').left).toBe(was.seller); // sellers untouched
+    expect(extraDemand(s, 'seashell')).toBe(step + all);
+    expect(extraDemand(s, 'tools')).toBe(all);
+    // tomorrow's buyers roll their demand with the bonus
+    s.quota.dueDay = 9999;
+    endDay(data, s);
+    for (const l of s.locations)
+      for (const id of l.actorIds) {
+        const a = data.actors[id];
+        if (a.role !== 'buyer') continue;
+        for (const ag of a.goods)
+          expect(offer(s, id, ag.good).left).toBeGreaterThanOrEqual(ag.qtyMin + extraDemand(s, ag.good));
+      }
   });
 
   it('stays away once everything has been bought', () => {
@@ -632,8 +689,8 @@ describe('dealer', () => {
     expect(counts.supplier.good / counts.supplier.n).toBeCloseTo(base.good, 1);
   });
 
-  it('rare better buyers is bigger, hits every good, and stacks with the per-good one', () => {
-    const s = withDealer(5, [{ kind: 'sellChance', good: 'tools' }, { kind: 'sellChanceAll' }]);
+  it('all-goods better buyers is bigger, hits every good, and stacks with the per-good one', () => {
+    const s = withDealer(5, [{ kind: 'sellChance', good: 'tools' }, { kind: 'sellChanceAll', tier: 1 }]);
     s.dealer!.offers.forEach((_, i) => buyDealerDeal(data, s, i));
     const { sellChanceStep: step, sellChanceAll: all } = CONFIG.dealer;
     expect(all).toBeGreaterThan(step);
@@ -649,5 +706,46 @@ describe('dealer', () => {
       s.perks.sellChance[good] = step;
       expect(buyerWeights(s, good).good).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('stamps', () => {
+  it('dealFromKey inverts dealKey for every deal', () => {
+    for (const d of allDeals(data)) expect(dealFromKey(dealKey(d))).toEqual(d);
+  });
+
+  it('eligibleDeals is every unowned deal, with only the first rank of ranked ones', () => {
+    const s = newRun(data, 1);
+    const pool = eligibleDeals(data, s);
+    expect(pool.filter((d) => d.kind === 'bag')).toEqual([{ kind: 'bag', tier: 1 }]);
+    const extraRanks = Object.values(CONFIG.dealer.ranks).reduce((sum, n) => sum + n - 1, 0);
+    expect(pool).toHaveLength(allDeals(data).length - extraRanks);
+    expect(BAG_TIERS).toBe(CONFIG.dealer.ranks.bag);
+  });
+});
+
+describe('canAct', () => {
+  it('is false with no cash and an empty bag, true with cash for a seller here', () => {
+    const s = newRun(data, 3);
+    const seller = withActor(s, 'supplier', 'strawberry');
+    const loc = s.locations.find((l) => l.actorIds.includes(seller))!.id;
+    s.dealer = null;
+    s.cash = 0;
+    s.inventory = [];
+    expect(canAct(data, s, loc)).toBe(false);
+    s.cash = 1000;
+    expect(canAct(data, s, loc)).toBe(true);
+  });
+
+  it('is true when the Dealer is here with an affordable deal', () => {
+    const s = newRun(data, 3);
+    const loc = s.locations[0].id;
+    s.cash = 0;
+    s.inventory = [];
+    s.stars = 10;
+    s.dealer = { locationId: loc, offers: [{ deal: { kind: 'stockAll', tier: 1 }, cost: 6, sold: false }] };
+    expect(canAct(data, s, loc)).toBe(true);
+    s.stars = 2;
+    expect(canAct(data, s, loc)).toBe(false);
   });
 });

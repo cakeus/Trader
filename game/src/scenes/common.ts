@@ -4,6 +4,7 @@ import { C, type Rect, type Ui } from '../engine/ui';
 import { daysLeft } from '../game/run';
 import type { ActorDef, Role } from '../game/types';
 import { PauseMenu } from './pause';
+import { StampsDialog } from './stamps';
 
 export const HUD_H = 30;
 /** Star gold that still reads on the paper panel. */
@@ -25,9 +26,16 @@ export function drawPortrait(ui: Ui, actor: Pick<ActorDef, 'portrait' | 'name'> 
   ui.text(actor.name[0], x + 32, y + 18, C.ink, { align: 'center', scale: 4 });
 }
 
-/** Top bar: day, cash, bag, stars, quota, and the Menu button (Esc also opens it). */
+/** Top bar: day, cash, bag, stars, quota, and the Stamps and Menu buttons (Esc also opens the menu).
+ *  Also plays the "Last Day!" announcement once on an unmet quota's due day. */
 export function drawHud(app: App, ui: Ui): void {
   const run = app.run!;
+  const key = `${run.seed}:${run.day}`;
+  if (run.day === run.quota.dueDay && !run.quota.met && app.announced !== key) {
+    app.announced = key;
+    ui.announce('Last Day!');
+    app.sfx.play('lastDay');
+  }
   ui.nine('panel_dark', { x: -8, y: -8, w: W + 16, h: HUD_H + 8 });
   const ty = 11;
   ui.image('assets/ui/icon_calendar.png', 8, 6);
@@ -54,6 +62,10 @@ export function drawHud(app: App, ui: Ui): void {
     ui.text(txt, sx, ty, left <= 1 ? C.redLight : C.muted);
   }
 
+  if (ui.button({ x: W - 134, y: 5, w: 62, h: 20 }, 'Stamps')) {
+    app.sfx.play('open');
+    app.push(new StampsDialog(app));
+  }
   if (ui.button({ x: W - 66, y: 5, w: 60, h: 20 }, 'Menu') || ui.key('Escape')) {
     app.push(new PauseMenu(app));
   }

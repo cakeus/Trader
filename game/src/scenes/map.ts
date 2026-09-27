@@ -52,25 +52,30 @@ export class MapScene implements Scene {
     const goodsFor = (role: 'supplier' | 'buyer') => [
       ...new Set(actorIds.filter((id) => data.actors[id].role === role).flatMap((id) => data.actors[id].goods.map((g) => g.good))),
     ];
-    const rows = [
+    const cols = [
       { label: 'Buys', color: C.sky, goods: goodsFor('buyer') },
       { label: 'Sells', color: C.greenLight, goods: goodsFor('supplier') },
-    ].filter((r) => r.goods.length > 0);
+    ].filter((c) => c.goods.length > 0);
     const dealer = this.app.run!.dealer?.locationId === locId;
 
     const w = 220;
     const blurb = ui.font.wrap(def.blurb, w - 16);
     const lh = ui.font.lineHeight;
-    const h = 14 + lh + blurb.length * lh + 6 + rows.length * 12 + (dealer ? 14 : 0) + 4;
+    const goodsH = cols.length > 0 ? 34 : 0;
+    const h = 14 + lh + blurb.length * lh + 6 + goodsH + (dealer ? 14 : 0) + 4;
     ui.tooltip(w, h, (x, y) => {
       ui.text(def.name, x, y, C.gold);
       blurb.forEach((l, i) => ui.text(l, x, y + lh + i * lh, C.muted));
       let ry = y + lh + blurb.length * lh + 6;
-      for (const r of rows) {
-        ui.text(r.label, x, ry, r.color);
-        r.goods.forEach((g, i) => ui.image(data.goods[g].iconSmall, x + 34 + i * 11, ry));
-        ry += 12;
-      }
+      // one column per side, label centred above its row of 16x16 icons
+      const colW = (w - 16) / cols.length;
+      cols.forEach((c, i) => {
+        const cx = x + colW * (i + 0.5);
+        ui.text(c.label, cx, ry, c.color, { align: 'center' });
+        const iw = c.goods.length * 18 - 2;
+        c.goods.forEach((g, j) => ui.image(data.goods[g].iconMedium, cx - iw / 2 + j * 18, ry + 12));
+      });
+      ry += goodsH;
       if (dealer) {
         ui.image('assets/ui/icon_star.png', x - 2, ry - 2);
         ui.text(`${data.dealer.name} is here!`, x + 16, ry + 2, C.gold);

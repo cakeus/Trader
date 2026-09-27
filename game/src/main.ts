@@ -10,7 +10,7 @@ import { MainMenu } from './scenes/mainMenu';
 
 const UI_IMAGES = [
   'panel', 'panel_dark', 'btn', 'btn_hover', 'btn_down', 'btn_disabled', 'row', 'row_hover', 'cursor',
-  'icon_coin', 'icon_bag', 'icon_calendar', 'icon_check', 'icon_pin', 'icon_star', 'icon_flag',
+  'icon_coin', 'icon_bag', 'icon_calendar', 'icon_check', 'icon_pin', 'icon_star', 'icon_flag', 'stamp', 'stamp_rare',
 ].map((n) => `assets/ui/${n}.png`);
 
 async function boot(): Promise<void> {
@@ -22,7 +22,7 @@ async function boot(): Promise<void> {
     ...UI_IMAGES,
     'assets/font/font.png',
     'assets/bg/map.png',
-    ...Object.values(data.goods).flatMap((g) => [g.icon, g.iconSmall]),
+    ...Object.values(data.goods).flatMap((g) => [g.icon, g.iconSmall, g.iconMedium]),
     ...Object.values(data.actors).map((a) => a.portrait),
     data.dealer.portrait,
     ...Object.values(data.locations).map((l) => l.background),

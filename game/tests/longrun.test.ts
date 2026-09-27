@@ -63,7 +63,7 @@ describe('balance: long run', () => {
       console.log(`\nquota growth x${g}: ${amounts.join(', ')}  (${RUNS} runs, to day ${DAYS}, dealer ${DEALER * 100}%)`);
       console.log(
         'profile        | ' + amounts.map((_, q) => `day ${String(QUOTA_DAYS * (q + 1)).padEnd(3)}`).join(' | ') +
-          ' | end day | stars got/spent | deals/run: bag disc stock sell rare',
+          ' | end day | stars got/spent | deals/run: bag disc stock dem sell all',
       );
       for (const p of profiles) {
         const s = simulate(p);
@@ -72,7 +72,7 @@ describe('balance: long run', () => {
         console.log(
           `${p.name.padEnd(14)} | ${cols} | ${(s.lastDay / RUNS).toFixed(1).padStart(7)} |` +
             ` ${avg(s.stars).padStart(6)} / ${avg(s.spent).padEnd(6)} |` +
-            ` ${[d.bag, d.discount, d.stock, d.sellChance, d.discountAll + d.stockAll + d.sellChanceAll].map(avg).join('  ')}`,
+            ` ${[d.bag, d.discount, d.stock, d.buyerStock, d.sellChance, d.discountAll + d.stockAll + d.buyerStockAll + d.sellChanceAll].map(avg).join('  ')}`,
         );
       }
     }

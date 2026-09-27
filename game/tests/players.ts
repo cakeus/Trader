@@ -8,7 +8,7 @@
  * Dealer deals to buy (and in what order), and which goods to favour.
  */
 import { CONFIG } from '../src/game/config';
-import { buyDealerDeal, dealGood, isRare } from '../src/game/dealer';
+import { buyDealerDeal, dealFromKey, dealGood, isUniversal } from '../src/game/dealer';
 import { buyerWeights, sellerPrice } from '../src/game/economy';
 import { actorsAt, buy, maxSell, offer, sell, visit } from '../src/game/run';
 import { type DealerDeal, type RunState, TIERS } from '../src/game/types';
@@ -18,7 +18,10 @@ export const data = loadTestData();
 
 /** Deals bought so far, by kind (a sim can reset and read this). */
 export const SIM = {
-  bought: { bag: 0, discount: 0, sellChance: 0, stock: 0, discountAll: 0, stockAll: 0, sellChanceAll: 0 } as Record<
+  bought: {
+    bag: 0, discount: 0, sellChance: 0, stock: 0, buyerStock: 0,
+    discountAll: 0, stockAll: 0, buyerStockAll: 0, sellChanceAll: 0,
+  } as Record<
     DealerDeal['kind'],
     number
   >,
@@ -100,8 +103,8 @@ export const random: Policy = (s, rng) => s.locations[Math.floor(rng() * s.locat
 export function focusGood(s: RunState): string | null {
   const counts = new Map<string, number>();
   for (const key of s.perks.owned) {
-    const [kind, good] = key.split(':');
-    if (good && kind !== 'bag') counts.set(good, (counts.get(good) ?? 0) + 1);
+    const good = dealGood(dealFromKey(key));
+    if (good) counts.set(good, (counts.get(good) ?? 0) + 1);
   }
   let top: string | null = null;
   for (const [good, n] of counts) if (top === null || n > counts.get(top)!) top = good;
@@ -110,7 +113,8 @@ export function focusGood(s: RunState): string | null {
 
 /** Rough value of each deal kind for a player who wants them all (bag slots scale best). */
 const DEAL_VALUE: Record<DealerDeal['kind'], number> = {
-  bag: 5, sellChanceAll: 4, discountAll: 4, stockAll: 3, discount: 2, sellChance: 1.5, stock: 1,
+  bag: 5, sellChanceAll: 4, discountAll: 4, stockAll: 3, buyerStockAll: 3, discount: 2, sellChance: 1.5, stock: 1,
+  buyerStock: 1,
 };
 
 export const PROFILES: Record<string, Profile> = {
@@ -128,19 +132,19 @@ export const PROFILES: Record<string, Profile> = {
   },
   packrat: {
     name: 'Packrat',
-    about: 'Only wants bag upgrades, then rares; saves stars for them.',
+    about: 'Only wants bag upgrades, then all-goods deals; saves stars for them.',
     pick: sensible,
-    dealRank: (_, d) => (d.kind === 'bag' ? 2 : isRare(d) ? 1 : null),
+    dealRank: (_, d) => (d.kind === 'bag' ? 2 : isUniversal(d) ? 1 : null),
   },
   specialist: {
     name: 'Specialist',
-    about: 'Commits to one good: buys its discount/stock/buyers deals and rares, and trades it harder.',
+    about: 'Commits to one good: buys its per-good deals and all-goods deals, and trades it harder.',
     pick: (s) => best(s, (l) => score(s, l, PROFILES.specialist.bias)),
     dealRank: (s, d) => {
       const good = dealGood(d);
       const focus = focusGood(s);
       if (good) return focus === null || good === focus ? 3 + margin(s, good) / 10 : null;
-      return isRare(d) ? 2 : d.kind === 'bag' ? 1 : null;
+      return isUniversal(d) ? 2 : d.kind === 'bag' ? 1 : null;
     },
     bias: (s, good) => (good === focusGood(s) ? 1.5 : 1),
   },

@@ -2,8 +2,8 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
-import { describeDeal, isRare } from '../game/dealer';
-import { actorsAt, avgPaid, endDay, offer } from '../game/run';
+import { describeDeal } from '../game/dealer';
+import { actorsAt, avgPaid, canAct, endDay, offer } from '../game/run';
 import type { Point, Role, Tier } from '../game/types';
 import { DealerDialog } from './dealer';
 import { Confirm, drawBackground, drawBag, drawHud, drawPortrait, HUD_H } from './common';
@@ -20,8 +20,13 @@ const DEAL_LABEL: Record<Tier, { text: string; color: string } | undefined> = {
 
 export const CARD_W = 108;
 export const CARD_H = 104;
+/** Seconds with nothing left to do before the End Day button starts glowing. */
+const NUDGE_AFTER = 5;
 
 export class LocationScene implements Scene {
+  /** ui.t when the player last ran out of things to do here, or null if they still can act. */
+  private stuckSince: number | null = null;
+
   constructor(private app: App, private locId: string) {}
 
   frame(ui: Ui): void {
@@ -50,7 +55,7 @@ export class LocationScene implements Scene {
     });
 
     if (run.dealer?.locationId === this.locId) {
-      const base = this.card(ui, app.data.dealer, def.dealerSlot, 3, 'Dealer', C.gold);
+      const base = this.card(ui, app.data.dealer, def.dealerSlot, 3, 'Stamps', C.gold);
       if (ui.hover(base)) this.dealerTooltip(ui);
       if (ui.clicked(base)) {
         app.sfx.play('open');
@@ -59,7 +64,22 @@ export class LocationScene implements Scene {
     }
 
     drawBag(app, ui, 8, H - 56);
-    if (ui.button({ x: W - 136, y: H - 50, w: 128, h: 38 }, 'End Day', { scale: 2 })) this.tryEndDay();
+    const endBtn: Rect = { x: W - 136, y: H - 50, w: 128, h: 38 };
+    if (canAct(app.data, run, this.locId)) this.stuckSince = null;
+    else this.stuckSince ??= ui.t;
+    if (this.stuckSince !== null && ui.t - this.stuckSince >= NUDGE_AFTER) {
+      const pulse = 0.5 + 0.5 * Math.sin((ui.t - this.stuckSince - NUDGE_AFTER) * 5 - Math.PI / 2);
+      endBtn.y -= Math.round(pulse);
+      // soft outer halo and a brighter inner ring, both breathing with the pulse
+      const glow = (g: number, alpha: number) => {
+        ui.ctx.fillStyle = `rgba(255,226,120,${alpha})`;
+        ui.ctx.fillRect(endBtn.x - g, endBtn.y - g + 2, endBtn.w + g * 2, endBtn.h + g * 2 - 4);
+        ui.ctx.fillRect(endBtn.x - g + 2, endBtn.y - g, endBtn.w + g * 2 - 4, endBtn.h + g * 2);
+      };
+      glow(4 + Math.round(pulse * 4), 0.15 + 0.3 * pulse);
+      glow(2 + Math.round(pulse * 1), 0.45 + 0.45 * pulse);
+    }
+    if (ui.button(endBtn, 'End Day', { scale: 2 })) this.tryEndDay();
     drawHud(app, ui);
   }
 
@@ -85,14 +105,14 @@ export class LocationScene implements Scene {
     const { data } = this.app;
     const run = this.app.run!;
     const rows = run.dealer!.offers.map((o) => ({
-      title: describeDeal(data, o.deal).title + (isRare(o.deal) ? ' (Rare)' : ''),
+      title: describeDeal(data, o.deal).title,
       note: o.sold ? 'Sold' : `${o.cost} stars`,
       color: o.sold ? C.muted : run.stars < o.cost ? C.redLight : C.gold,
     }));
     const w = Math.max(200, 32 + Math.max(...rows.map((r) => ui.font.measure(`${r.title}  ${r.note}`))));
     ui.tooltip(w, 30 + rows.length * 12 + 18, (x, y) => {
       ui.text(data.dealer.name, x, y, C.gold);
-      ui.text('Sells:', x, y + 12, C.muted);
+      ui.text('Stamps:', x, y + 12, C.muted);
       rows.forEach((r, i) => {
         ui.text(r.title, x, y + 24 + i * 12, r.color === C.muted ? C.muted : C.cream);
         ui.text(r.note, x + w - 16, y + 24 + i * 12, r.color, { align: 'right' });

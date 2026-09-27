@@ -73,5 +73,5 @@ describe('balance: first quota', () => {
     expect(oracleMet / SEEDS).toBeGreaterThanOrEqual(0.9);
     expect(randomMet).toBeLessThan(sensibleMet);
     expect(randomMet / SEEDS).toBeLessThan(0.15);
-  });
+  }, 30_000); // the oracle's full search takes ~5s, right at vitest's default limit
 });

@@ -2,7 +2,7 @@ import type { Assets } from './assets';
 import type { Sfx } from './audio';
 import type { Font, TextOpts } from './font';
 import type { Input } from './input';
-import { W } from './screen';
+import { H, W } from './screen';
 
 export interface Rect {
   x: number;
@@ -39,6 +39,8 @@ interface Floater {
 }
 
 const CORNER = 8;
+/** How long a big centre-screen announcement stays up, in seconds. */
+const ANNOUNCE_T = 2.2;
 
 /** Immediate-mode UI helpers. Only the top scene is `active` (gets hover/clicks). */
 export class Ui {
@@ -49,6 +51,8 @@ export class Ui {
   private floaters: Floater[] = [];
   private toastText = '';
   private toastAge = 99;
+  private announceText = '';
+  private announceAge = 99;
 
   constructor(
     readonly ctx: CanvasRenderingContext2D,
@@ -177,11 +181,18 @@ export class Ui {
     this.toastAge = 0;
   }
 
+  /** Big centre-screen text that pops in, wobbles, and fades out (e.g. "Last Day!"). */
+  announce(text: string): void {
+    this.announceText = text;
+    this.announceAge = 0;
+  }
+
   begin(dt: number): void {
     this.t += dt;
     for (const f of this.floaters) f.age += dt;
     this.floaters = this.floaters.filter((f) => f.age < 1.1);
     this.toastAge += dt;
+    this.announceAge += dt;
   }
 
   end(): void {
@@ -197,7 +208,33 @@ export class Ui {
       this.nine('panel_dark', { x: (W - w) / 2, y, w, h: 30 });
       this.text(this.toastText, W / 2, y + 8, C.gold, { align: 'center', scale: 2, shadow: C.shadow });
     }
+    if (this.announceAge < ANNOUNCE_T) this.drawAnnounce();
     for (const fn of this.overlays) fn();
     this.overlays = [];
+  }
+
+  private drawAnnounce(): void {
+    const { ctx } = this;
+    const a = this.announceAge;
+    const alpha = Math.min(1, a / 0.12, (ANNOUNCE_T - a) / 0.4);
+    // dark band that opens from the middle
+    const bandH = Math.round(76 * Math.min(1, a / 0.2));
+    ctx.fillStyle = `rgba(20,14,32,${0.6 * alpha})`;
+    ctx.fillRect(0, Math.round(H / 2 - bandH / 2), W, bandH);
+    // pop in with an overshoot, then a wobble that settles
+    const p = Math.min(1, a / 0.35) - 1;
+    const pop = 1 + 2.70158 * p * p * p + 1.70158 * p * p;
+    const rot = Math.sin(a * 14) * 0.07 * Math.max(0, 1 - a / 1.2);
+    const scale = 5;
+    const y = -Math.round((7 * scale) / 2);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(rot);
+    ctx.scale(pop, pop);
+    for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 3], [2, 3], [-2, 3]])
+      this.text(this.announceText, dx, y + dy, C.shadow, { align: 'center', scale });
+    this.text(this.announceText, 0, y, C.gold, { align: 'center', scale });
+    ctx.restore();
   }
 }

@@ -14,6 +14,8 @@ export interface Scene {
 export class App {
   scenes: Scene[] = [];
   run: RunState | null = null;
+  /** "seed:day" the "Last Day!" announcement last played for (not saved, so it replays after Continue). */
+  announced = '';
   private fade = 0;
 
   constructor(

@@ -9,7 +9,9 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 - Each day you pick one of 3 locations on the map. The map tooltips show which goods each location buys and sells today.
 - At the location you click an actor to trade: click for 1 unit, shift-click for the max. Then you press End Day.
 - Quota *n* is $25·`CONFIG.quotaGrowth`ⁿ (×1.6, rounded to $5: $25, $40, $65, $100, $165, …), due at the end of day 7·(*n*+1). A quota counts as met as soon as your cash reaches it, even if you spend below it afterwards. Missing a quota ends the run.
-- Meeting a quota earns **stars** (see below), which you spend at the Dealer.
+- Meeting a quota earns **stars** (see below), which you spend on Stamps from the Dealer (Nox the Stamp Trader).
+- On an unmet quota's due day, a big animated "Last Day!" (`ui.announce`, `lastDay` sfx) plays once, triggered from `drawHud` and keyed by seed and day on `app.announced`.
+- At a location, when `canAct` (`run.ts`) says nothing can be bought or sold and no Stamp is affordable, the End Day button starts glowing 5s later (`NUDGE_AFTER` in `scenes/location.ts`).
 - The pause menu (Menu button or Esc) has sound on/off, Save & Quit, Abandon Run, and the run's seed.
 
 ## Economy rules
@@ -28,16 +30,18 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 
 ## Stars and the Dealer
 
-- **Stars:** `updateQuota` awards them the moment a quota is met: the quota's base `stars` (3, then 6 from quota 2 on; `STAR_STEP`/`STAR_CAP` in `run.ts`) plus `EARLY_STAR` (1) per day before the due day. `starsAwarded`/`earlyBonus` are recorded on the quota for the QuotaResult screen.
-- **Dealer** (`src/game/dealer.ts`, content in `public/data/dealer.json`): not one of the 16 actors, so `dealActors` ignores him. `rollDealer` runs in `startDay`: nothing until stars have been earned, a guaranteed first visit the next morning (`dealerSeen`), then `CONFIG.dealer.chance` (50%) per day, at one random run location. He stands as a 4th card at the location's `dealerSlot`. Deterministic for (seed, day).
-- **Deals:** each visit brings up to `CONFIG.dealer.offers` (3) distinct deals from `eligibleDeals`, drawn by `CONFIG.dealer.weight` (rares 0.25, others 1) and bought separately. **Every deal can be bought only once per run** (`perks.owned`, keyed by `dealKey`). Once nothing is left, he stops coming.
-  - `bag` I / II / III: +1 capacity each, costing `bagCosts` (3 / 4 / 5★). Only the next tier is offered, so each needs the one before.
-  - `discount` (per good, 3★): `dealerDiscount` from `goods.json` off every seller of that good, floor $1, applied immediately.
-  - `stock` (per good, 3★): +`stockStep` (1) daily stock for every seller of that good, applied immediately.
+- **Stars:** `updateQuota` awards them the moment a quota is met: the quota's base `stars` (3, then 6 from quota 2 on; `STAR_STEP`/`STAR_CAP` in `run.ts`) plus `EARLY_STAR` (1) per day before the due day. `starsAwarded`/`earlyBonus` are recorded on the quota for the "Quota reached! +N stars" toast. The QuotaResult screen doesn't mention stars.
+- **Dealer** ("Nox the Stamp Trader"; his deals are called **Stamps** in the UI; `src/game/dealer.ts`, content in `public/data/dealer.json`): not one of the 16 actors, so `dealActors` ignores him. `rollDealer` runs in `startDay`: nothing until stars have been earned, a guaranteed first visit the next morning (`dealerSeen`), then `CONFIG.dealer.chance` (50%) per day, at one random run location. He stands as a 4th card at the location's `dealerSlot`. Deterministic for (seed, day).
+- **Deals:** each visit brings up to `CONFIG.dealer.offers` (3) distinct deals from `eligibleDeals`, bought separately. For each offer slot, `rollDealer` first picks a deal **kind** evenly among the kinds still available (`CONFIG.dealer.weight` can skew this, default 1 each), then a deal of that kind: which good for per-good kinds, or the next rank. So `stock` (any good) is as likely as `stockAll`. There is no rarity. **Every deal can be bought only once per run** (`perks.owned`, keyed by `dealKey`). Once nothing is left, he stops coming.
+  - **Ranked kinds** (`RankedKind`, `CONFIG.dealer.ranks`): `bag`, `stockAll`, `buyerStockAll` and `sellChanceAll` have 3 ranks each (titles end in I / II / III). Only the next rank is offered, so each needs the one before. Ranks stack.
+  - `bag` I / II / III: +1 capacity each, costing `bagCosts` (3 / 4 / 5★).
+  - `discount` (per good, 3★, "<Good> Sale"): `dealerDiscount` from `goods.json` off every seller of that good, floor $1, applied immediately.
+  - `stock` (per good, 3★, "<Good> Surplus"): +`stockStep` (1) daily stock for every seller of that good, applied immediately.
+  - `buyerStock` (per good, 3★, "<Good> Demand"): +`buyerStockStep` (1) daily demand for every buyer of that good, applied immediately (`extraDemand` in `economy.ts`).
   - `sellChance` (per good, 3★): +`sellChanceStep` (5%) to that good's buyers' great and amazing weights, taken from good (`buyerWeights(state, good)` in `economy.ts`). Applies from the next day's roll.
-  - Rare `discountAll` / `stockAll` (6★): $`discountAll` off / +`stockAll` stock for every good's sellers. They stack with the per-good deals (`sellerPrice` and `extraStock` in `economy.ts`).
-  - Rare `sellChanceAll` (6★): +`sellChanceAll` (10%) to every good's buyers' great and amazing weights. It stacks with the per-good `sellChance`.
-- UI: HUD star counter (quota uses `icon_flag`), map tooltip line, card + tooltip, and `DealerDialog` (`src/scenes/dealer.ts`), laid out like the old trade dialog with one clickable row per deal. Rares get a purple "Rare" tag and a 2×2 grid of the goods' small icons.
+  - All-goods deals (`isUniversal`, 6★ per rank; purple stamps): `discountAll` ("Clearance Sale", $`discountAll` off every seller, one rank), `stockAll` ("Overflowing Supply", +`stockAll` stock per rank), `buyerStockAll` ("Universal Demand", +`buyerStockAll` demand per rank) and `sellChanceAll` ("Deals, Deals, Everywhere", +`sellChanceAll` (10%) great and amazing per rank). They stack with the per-good deals (`sellerPrice`, `extraStock`, `extraDemand`, `buyerWeights`). With all 3 `sellChanceAll` ranks plus a good's `sellChance`, that good's buyers' good-tier weight hits the 0 floor.
+- UI: HUD star counter (quota uses `icon_flag`), map tooltip line, card (tag "Stamps") + tooltip, and `DealerDialog` (`src/scenes/dealer.ts`), laid out like the old trade dialog with one clickable row per deal. Each deal is drawn as a postage stamp by `drawStamp` (`src/scenes/stampArt.ts`, 42×42 `stamp`/`stamp_rare` backgrounds from `make_stamp.py`). All-goods deals get the purple stamp and a 2×2 grid of the goods' small icons.
+- **Stamps button** in the HUD opens `StampsDialog` (`src/scenes/stamps.ts`): every owned stamp (`allDeals` filtered by `owns`, keys decoded with `dealFromKey`), with hover tooltips.
 
 ## Balance and the scaling wall (next phase: earnable player scaling)
 
@@ -45,22 +49,22 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 - **Long-run sim** (`npm run sim`, `tests/longrun.test.ts`, log only; also runs under `npm test`): 500 runs to day 35 for every strategy profile in `tests/players.ts`, plus a random player. It prints the share of runs still alive after each quota, with star and deal stats. Env overrides: `RUNS`, `DAYS`, `GROWTH=2,1.6,1.5` to compare quota growth factors, and `DEALER=0.5` for the Dealer chance. All profiles value goods at perk-adjusted prices.
   - **Frugal:** plays the market well and ignores the Dealer.
   - **Impulse:** buys every affordable deal in the order shown (the old sim; also the first-quota sim's player).
-  - **Packrat:** only buys bag upgrades, then rares.
-  - **Specialist:** commits to one good (its first per-good deal), buys only that good's deals plus rares and bags, and favours it ×1.5 when trading and choosing a location.
-  - **Dealer chaser:** adds +10 to the Dealer's location whenever it has 3+ stars, and buys by value: bag > rare discount/buyers > rare stock > discount > buyers > stock.
+  - **Packrat:** only buys bag upgrades, then all-goods deals.
+  - **Specialist:** commits to one good (its first per-good deal), buys only that good's deals plus all-goods deals and bags, and favours it ×1.5 when trading and choosing a location.
+  - **Dealer chaser:** adds +10 to the Dealer's location whenever it has 3+ stars, and buys by value: bag > all-goods discount/buyers > all-goods stock/demand > discount > buyers > stock/demand.
 
-  Current tuning (quotas ×1.6, Dealer 50%, 3 one-time deals per visit). Survival is the share of runs still alive after that day:
+  Current tuning (quotas ×1.6, Dealer 50%, 3 one-time deals per visit, kinds drawn evenly). Survival is the share of runs still alive after that day:
 
   | Profile | Day 14 | Day 21 | Day 28 | Day 35 | Stars got / spent | Bags bought |
   |---|---|---|---|---|---|---|
   | Frugal | 56% | 45% | 22% | 0% | 13.9 / 0 | 0 |
-  | Impulse | 56% | 51% | 41% | 16% | 17.9 / 14.2 | 0.4 |
-  | Packrat | 56% | 45% | 28% | 3% | 14.8 / 3.5 | 0.5 |
-  | Specialist | 56% | 50% | 38% | 11% | 17.0 / 7.2 | 0.5 |
-  | Dealer chaser | 59% | 55% | 49% | 29% | 20.9 / 19.0 | 0.8 |
-  | Random | 7% | 2% | 1% | 0% | 1.4 / 1.1 | 0 |
+  | Impulse | 55% | 49% | 41% | 22% | 18.7 / 14.9 | 0.4 |
+  | Packrat | 55% | 50% | 42% | 24% | 18.8 / 12.7 | 0.7 |
+  | Specialist | 56% | 49% | 42% | 25% | 18.7 / 13.5 | 0.5 |
+  | Dealer chaser | 57% | 54% | 49% | 37% | 22.4 / 20.4 | 0.8 |
+  | Random | 7% | 3% | 2% | 0% | 1.5 / 1.2 | 0.1 |
 
-  Every profile is at 62% on day 7. Chasing the Dealer wins by a wide margin. Picky profiles starve: the bag upgrade is 1 of 16 deals in the pool (rares are drawn at a quarter weight), so it shows up on only about 1 in 5 visits. A Specialist sees its own good's deals equally rarely.
+  Every profile is at 62% on day 7. Chasing the Dealer still wins. Drawing kinds evenly helped the picky profiles a lot (Packrat went from 3% to 24% on day 35): bags and the all-goods deals now come up far more often than when they were 1 deal among many or rares at a quarter weight.
 
 - **Why:** income is roughly linear while quotas grow geometrically (they used to double every week; now ×1.6). Four bag slots at about $1.40–$2.30 expected profit per unit, with one location a day, earn roughly $30–60 a week.
 - **Scaling knobs:**
@@ -127,7 +131,7 @@ Write one script per sprite, `art/make_<name>.py`, built with `pixelkit.Sprite`:
 
 ## Asset sizes
 
-- Goods: a 32×32 `icon` and an 8×8 `iconSmall` (`make_icons8.py`), in `assets/goods/`.
+- Goods: a 32×32 `icon`, a 16×16 `iconMedium` (`make_icons16.py`, for the map tooltip) and an 8×8 `iconSmall` (`make_icons8.py`), in `assets/goods/`.
 - Actor portraits: 64×64, in `assets/actors/<actor id>.png`.
 - Backgrounds: 640×480, opaque, in `assets/bg/`. Keep them soft so the UI cards stand out.
 - UI: 24×24 9-slice panels with 8px corners, 16×16 icons, and the cursor, in `assets/ui/`.

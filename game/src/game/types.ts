@@ -6,6 +6,8 @@ export interface GoodDef {
   icon: string;
   /** 8x8 icon for compact lists. */
   iconSmall: string;
+  /** 16x16 icon for the map tooltip. */
+  iconMedium: string;
   blurb: string;
   /** Dollars off this good's seller prices once the Dealer's discount is bought. */
   dealerDiscount: number;
@@ -107,15 +109,16 @@ export interface BagItem {
   day: number;
 }
 
-/** One upgrade the Dealer can sell. */
+/** Deal kinds bought in ranks (I, II, III...); each rank needs the one before. */
+export type RankedKind = 'bag' | 'stockAll' | 'buyerStockAll' | 'sellChanceAll';
+/** Deal kinds that come once per good. */
+export type GoodKind = 'discount' | 'stock' | 'buyerStock' | 'sellChance';
+
+/** One upgrade (stamp) the Dealer can sell. */
 export type DealerDeal =
-  | { kind: 'bag'; tier: number }
-  | { kind: 'discount'; good: string }
-  | { kind: 'sellChance'; good: string }
-  | { kind: 'stock'; good: string }
-  | { kind: 'discountAll' }
-  | { kind: 'stockAll' }
-  | { kind: 'sellChanceAll' };
+  | { kind: RankedKind; tier: number }
+  | { kind: GoodKind; good: string }
+  | { kind: 'discountAll' };
 
 /** One of the Dealer's offers today. */
 export interface DealerOffer {
@@ -139,17 +142,21 @@ export interface Perks {
   sellChance: Record<string, number>;
   /** Extra daily stock for every seller, per good. */
   stock: Record<string, number>;
-  /** Dollars off every seller price, and extra daily stock for every seller (the rare deals). */
+  /** Extra daily demand for every buyer, per good. */
+  buyerStock: Record<string, number>;
+  /** Dollars off every seller price, extra daily stock for every seller, and extra daily demand
+   *  for every buyer (the all-goods deals). */
   discountAll: number;
   stockAll: number;
-  /** Added to every buyer's great and amazing weights (the rare better-buyers deal). */
+  buyerStockAll: number;
+  /** Added to every buyer's great and amazing weights (the all-goods better-buyers deal). */
   sellChanceAll: number;
   /** Keys (`dealKey`) of every deal bought this run; each deal can be bought only once. */
   owned: string[];
 }
 
 export interface RunState {
-  version: 7;
+  version: 8;
   seed: number;
   day: number;
   cash: number;

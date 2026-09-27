@@ -17,7 +17,7 @@ export function rollTier(r: Rng, weights: Record<Tier, number> = CONFIG.dealWeig
   return TIERS[TIERS.length - 1];
 }
 
-/** Buyers' tier weights for a good after the Dealer's better-buyers perks (that good's, plus the rare
+/** Buyers' tier weights for a good after the Dealer's better-buyers perks (that good's, plus the
  *  all-goods one): great and amazing gain, good pays for both. */
 export function buyerWeights(state: RunState, good: string): Record<Tier, number> {
   const w = CONFIG.dealWeights;
@@ -35,6 +35,11 @@ export function extraStock(state: RunState, good: string): number {
   return (state.perks.stock[good] ?? 0) + state.perks.stockAll;
 }
 
+/** Extra daily demand a buyer of `good` has from the Dealer's demand deals. */
+export function extraDemand(state: RunState, good: string): number {
+  return (state.perks.buyerStock[good] ?? 0) + state.perks.buyerStockAll;
+}
+
 /** Today's deal tier, price and stock/demand for every actor present in the run.
  *  A pure function of (seed, day, actor, good), so it is reproducible. */
 export function rollMarket(data: GameData, state: RunState): Record<string, Offer> {
@@ -48,7 +53,7 @@ export function rollMarket(data: GameData, state: RunState): Record<string, Offe
         market[offerKey(actorId, ag.good)] = {
           tier,
           price: seller ? sellerPrice(state, ag.good, ag.prices[tier]) : ag.prices[tier],
-          left: r.int(ag.qtyMin, ag.qtyMax) + (seller ? extraStock(state, ag.good) : 0),
+          left: r.int(ag.qtyMin, ag.qtyMax) + (seller ? extraStock(state, ag.good) : extraDemand(state, ag.good)),
         };
       }
     }

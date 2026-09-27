@@ -1,7 +1,7 @@
 import { rngFor } from '../engine/rng';
 import { CONFIG } from './config';
 import { dealActors } from './deal';
-import { rollDealer } from './dealer';
+import { dealerBlock, rollDealer } from './dealer';
 import { offerKey, rollMarket } from './economy';
 import type { EndDayResult, GameData, Offer, Quota, RunState } from './types';
 
@@ -33,7 +33,7 @@ export function newRun(data: GameData, seed: number): RunState {
     .slice(0, RUN_LOCATIONS)
     .map((id) => ({ id, actorIds: [] as string[] }));
   const state: RunState = {
-    version: 7,
+    version: 8,
     seed,
     day: 1,
     cash: START_CASH,
@@ -45,7 +45,10 @@ export function newRun(data: GameData, seed: number): RunState {
     market: {},
     stats: { bought: 0, sold: 0, quotasMet: 0, starsEarned: 0 },
     stars: 0,
-    perks: { discounts: {}, sellChance: {}, stock: {}, discountAll: 0, stockAll: 0, sellChanceAll: 0, owned: [] },
+    perks: {
+      discounts: {}, sellChance: {}, stock: {}, buyerStock: {},
+      discountAll: 0, stockAll: 0, buyerStockAll: 0, sellChanceAll: 0, owned: [],
+    },
     dealer: null,
     dealerSeen: false,
     status: 'active',
@@ -147,6 +150,18 @@ export function maxBuy(state: RunState, actorId: string, goodId: string): number
 export function maxSell(state: RunState, actorId: string, goodId: string): number {
   const n = countOf(state, goodId);
   return Math.max(0, CONFIG.limitStock ? Math.min(n, offer(state, actorId, goodId).left) : n);
+}
+
+/** Whether there's anything left to do at a location today: a good you can buy, a good you can
+ *  sell, or (if the Dealer is here) a deal you can afford. */
+export function canAct(data: GameData, state: RunState, locationId: string): boolean {
+  const trade = actorsAt(state, locationId).some((id) => {
+    const a = data.actors[id];
+    const block = a.role === 'supplier' ? buyBlock : sellBlock;
+    return a.goods.some((g) => block(state, id, g.good) === null);
+  });
+  const dealer = state.dealer?.locationId === locationId && state.dealer.offers.some((_, i) => dealerBlock(state, i) === null);
+  return trade || dealer;
 }
 
 /** Buy up to `qty` units; returns how many were bought. */
