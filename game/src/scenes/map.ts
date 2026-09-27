@@ -58,7 +58,7 @@ export class MapScene implements Scene {
     ].filter((c) => c.goods.length > 0);
     const dealer = this.app.run!.dealer?.locationId === locId;
 
-    const w = 220;
+    const w = 165;
     const blurb = ui.font.wrap(def.blurb, w - 16);
     const lh = ui.font.lineHeight;
     const goodsH = cols.length > 0 ? 34 : 0;
