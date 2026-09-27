@@ -17,12 +17,26 @@ export function rollTier(r: Rng, weights: Record<Tier, number> = CONFIG.dealWeig
   return TIERS[TIERS.length - 1];
 }
 
+/** Weighted pick of a seller's base daily stock (CONFIG.stockWeights). */
+export function rollStock(r: Rng): number {
+  const entries = Object.entries(CONFIG.stockWeights);
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  let x = r.next() * total;
+  for (const [qty, w] of entries) {
+    x -= w;
+    if (x < 0) return Number(qty);
+  }
+  return Number(entries[entries.length - 1][0]);
+}
+
 /** Buyers' tier weights for a good after the Dealer's better-buyers perks (that good's, plus the
- *  all-goods one): great and amazing gain, good pays for both. */
+ *  all-goods one): great and amazing gain, bad pays for both, then good once bad is gone. */
 export function buyerWeights(state: RunState, good: string): Record<Tier, number> {
-  const w = CONFIG.dealWeights;
+  const w = CONFIG.buyerDealWeights;
   const s = (state.perks.sellChance[good] ?? 0) + state.perks.sellChanceAll;
-  return { good: Math.max(0, w.good - 2 * s), great: w.great + s, amazing: w.amazing + s };
+  const bad = Math.max(0, w.bad - 2 * s);
+  const fromGood = 2 * s - (w.bad - bad);
+  return { bad, good: Math.max(0, w.good - fromGood), great: w.great + s, amazing: w.amazing + s };
 }
 
 /** A seller's price after the Dealer's discounts on that good and on everything (never below $1). */
@@ -53,7 +67,9 @@ export function rollMarket(data: GameData, state: RunState): Record<string, Offe
         market[offerKey(actorId, ag.good)] = {
           tier,
           price: seller ? sellerPrice(state, ag.good, ag.prices[tier]) : ag.prices[tier],
-          left: r.int(ag.qtyMin, ag.qtyMax) + (seller ? extraStock(state, ag.good) : extraDemand(state, ag.good)),
+          left: seller
+            ? rollStock(r) + extraStock(state, ag.good)
+            : r.int(ag.qtyMin, ag.qtyMax) + extraDemand(state, ag.good),
         };
       }
     }

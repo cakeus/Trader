@@ -68,6 +68,8 @@ export interface Profile {
   dealRank: (s: RunState, deal: DealerDeal) => number | null;
   /** Multiplier on how much a good is wanted when choosing what to buy and where to go. */
   bias?: Bias;
+  /** Never sell a unit for less than was paid for it, except on an unmet quota's due day. */
+  noLoss?: boolean;
 }
 
 const noBias: Bias = () => 1;
@@ -126,9 +128,9 @@ export const PROFILES: Record<string, Profile> = {
   },
   impulse: {
     name: 'Impulse',
-    about: 'Buys every affordable deal in the order shown (the old sim).',
+    about: 'Buys every affordable deal, bag upgrades first, then in the order shown.',
     pick: sensible,
-    dealRank: () => 0,
+    dealRank: (_, d) => (d.kind === 'bag' ? 1 : 0),
   },
   packrat: {
     name: 'Packrat',
@@ -138,15 +140,42 @@ export const PROFILES: Record<string, Profile> = {
   },
   specialist: {
     name: 'Specialist',
-    about: 'Commits to one good: buys its per-good deals and all-goods deals, and trades it harder.',
-    pick: (s) => best(s, (l) => score(s, l, PROFILES.specialist.bias)),
+    about:
+      'Commits to one good: buys bags, its per-good deals and all-goods deals, trades it harder, and visits the Dealer when it can also trade that good there.',
+    pick: (s) =>
+      best(s, (l) => {
+        const focus = focusGood(s);
+        const here = actorsAt(s, l).map((a) => data.actors[a]);
+        const trades = (role: string, good: string) => here.some((a) => a.role === role && a.goods.some((g) => g.good === good));
+        const holding = (good: string) => s.inventory.some((it) => it.good === good);
+        // go where the focus good can be restocked (filling the free slots), on top of the usual score
+        const restock = focus !== null && trades('supplier', focus);
+        const room = s.capacity - s.inventory.length;
+        // the Dealer is worth the trip if there's also something to trade there: the focus good
+        // (buying it, or selling what's held), or before committing, a buyer for anything in the bag
+        const wanted =
+          focus !== null
+            ? restock || (holding(focus) && trades('buyer', focus))
+            : s.inventory.some((it) => trades('buyer', it.good));
+        const dealer = s.dealer?.locationId === l && s.stars >= 3 && wanted ? 10 : 0;
+        return score(s, l, PROFILES.specialist.bias) + (restock ? room * Math.max(0, margin(s, focus!)) : 0) + dealer;
+      }),
     dealRank: (s, d) => {
+      if (d.kind === 'bag') return 10; // more slots help every strategy
       const good = dealGood(d);
       const focus = focusGood(s);
       if (good) return focus === null || good === focus ? 3 + margin(s, good) / 10 : null;
-      return isUniversal(d) ? 2 : d.kind === 'bag' ? 1 : null;
+      return isUniversal(d) ? 2 : null;
     },
-    bias: (s, good) => (good === focusGood(s) ? 1.5 : 1),
+    // strong enough that the focus good is bought first whenever it turns a profit
+    bias: (s, good) => (good === focusGood(s) ? 3 : 1),
+  },
+  patient: {
+    name: 'Patient',
+    about: 'Like Impulse, but never sells a unit below what it paid (unless the quota is due today).',
+    pick: sensible,
+    dealRank: (_, d) => (d.kind === 'bag' ? 1 : 0),
+    noLoss: true,
   },
   chaser: {
     name: 'Dealer chaser',
@@ -158,6 +187,14 @@ export const PROFILES: Record<string, Profile> = {
 };
 
 // ------------------------------------------------------------------ trading ----
+
+/** How many units of a good can be sold at `price` without a loss. Sales take the oldest unit
+ *  first, so stop at the first one that was bought for more. */
+function lossFree(s: RunState, good: string, price: number): number {
+  const units = s.inventory.filter((it) => it.good === good);
+  const n = units.findIndex((it) => it.paid > price);
+  return n === -1 ? units.length : n;
+}
 
 export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.impulse): void {
   visit(s, loc);
@@ -176,7 +213,8 @@ export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.im
     .filter((a) => data.actors[a].role === 'buyer')
     .flatMap((a) => data.actors[a].goods.map((g) => ({ a, good: g.good, price: offer(s, a, g.good).price })))
     .sort((x, y) => y.price - x.price);
-  for (const t of sales) sell(data, s, t.a, t.good, maxSell(s, t.a, t.good));
+  const desperate = !s.quota.met && s.day >= s.quota.dueDay;
+  for (const t of sales) sell(data, s, t.a, t.good, profile.noLoss && !desperate ? lossFree(s, t.good, t.price) : maxSell(s, t.a, t.good));
   if (s.day >= s.quota.dueDay) return;
   // buy: best expected margin first (scaled by the profile's bias)
   const bias = profile.bias ?? noBias;

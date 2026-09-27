@@ -58,10 +58,15 @@ export function allDeals(data: GameData): DealerDeal[] {
   return all;
 }
 
-/** Deals the Dealer could offer right now: every deal not yet bought, except that only the next
- *  rank of a ranked deal is offered (each needs the one before). */
+/** Is this kind of deal switched on (not in CONFIG.dealer.disabled)? */
+export function dealEnabled(deal: DealerDeal): boolean {
+  return !CONFIG.dealer.disabled.includes(deal.kind);
+}
+
+/** Deals the Dealer could offer right now: every enabled deal not yet bought, except that only
+ *  the next rank of a ranked deal is offered (each needs the one before). */
 export function eligibleDeals(data: GameData, state: RunState): DealerDeal[] {
-  const unowned = allDeals(data).filter((d) => !owns(state, d));
+  const unowned = allDeals(data).filter((d) => dealEnabled(d) && !owns(state, d));
   return unowned.filter(
     (d) => !isRanked(d) || !unowned.some((o) => o.kind === d.kind && isRanked(o) && o.tier < d.tier),
   );
@@ -70,8 +75,10 @@ export function eligibleDeals(data: GameData, state: RunState): DealerDeal[] {
 /** Today's Dealer visit, or null. He only comes once you've earned stars; his first visit is
  *  guaranteed, after that it's CONFIG.dealer.chance per day. He brings up to CONFIG.dealer.offers
  *  distinct deals: for each, a kind is picked among the kinds still available (evenly, or by
- *  CONFIG.dealer.weight), then a deal of that kind (which good, or the next rank). He doesn't
- *  come once there's nothing left to sell. Deterministic for (seed, day). */
+ *  CONFIG.dealer.weight), then a deal of that kind (which good, or the next rank). On his first
+ *  visit after a met quota (`dealerCheapOwed`), the first deal is drawn only from those costing
+ *  at most CONFIG.dealer.cheapAfterQuota. He doesn't come once there's nothing left to sell.
+ *  Deterministic for (seed, day). */
 export function rollDealer(data: GameData, state: RunState): DealerVisit | null {
   if (state.stats.starsEarned <= 0) return null;
   const r = rngFor(state.seed, 'dealer', state.day);
@@ -82,17 +89,24 @@ export function rollDealer(data: GameData, state: RunState): DealerVisit | null 
   state.dealerSeen = true;
   const locationId = state.locations[r.int(0, state.locations.length - 1)].id;
   const weight = (k: DealerDeal['kind']) => CONFIG.dealer.weight[k] ?? 1;
-  const offers = [];
-  while (offers.length < CONFIG.dealer.offers && pool.length > 0) {
-    const kinds = [...new Set(pool.map((d) => d.kind))];
+  /** Pick a kind among `from`'s kinds, then one deal of it, and take it out of the pool. */
+  const draw = (from: DealerDeal[]) => {
+    const kinds = [...new Set(from.map((d) => d.kind))];
     let x = r.next() * kinds.reduce((sum, k) => sum + weight(k), 0);
     let i = 0;
     while (i < kinds.length - 1 && (x -= weight(kinds[i])) >= 0) i++;
-    const options = pool.filter((d) => d.kind === kinds[i]);
+    const options = from.filter((d) => d.kind === kinds[i]);
     const deal = options[r.int(0, options.length - 1)];
     pool.splice(pool.indexOf(deal), 1);
-    offers.push({ deal, cost: dealCost(deal), sold: false });
+    return { deal, cost: dealCost(deal), sold: false };
+  };
+  const offers = [];
+  if (state.dealerCheapOwed) {
+    const cheap = pool.filter((d) => dealCost(d) <= CONFIG.dealer.cheapAfterQuota);
+    if (cheap.length > 0) offers.push(draw(cheap));
+    state.dealerCheapOwed = false;
   }
+  while (offers.length < CONFIG.dealer.offers && pool.length > 0) offers.push(draw(pool));
   return { locationId, offers };
 }
 
@@ -205,7 +219,7 @@ export function describeDeal(data: GameData, deal: DealerDeal): { title: string;
     case 'sellChance': {
       const pct = Math.round(d.sellChanceStep * 100);
       const g = data.goods[deal.good];
-      return { title: `${g.name} Dealer`, body: `+${pct}% better deals on ${g.name}.` };
+      return { title: `${g.name} Dealer`, body: `+${pct}% better deals when selling ${g.name}.` };
     }
     case 'buyerStock': {
       const g = data.goods[deal.good];

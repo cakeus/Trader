@@ -14,8 +14,8 @@ export interface GoodDef {
 }
 
 /** Deal tier rolled per actor/good each day. */
-export type Tier = 'good' | 'great' | 'amazing';
-export const TIERS: Tier[] = ['good', 'great', 'amazing'];
+export type Tier = 'bad' | 'good' | 'great' | 'amazing';
+export const TIERS: Tier[] = ['bad', 'good', 'great', 'amazing'];
 
 /** One good an actor trades. Each day a tier is rolled and its price applies.
  *  qty = daily stock (suppliers) or daily demand (buyers). */
@@ -51,6 +51,7 @@ export interface LocationDef {
   /** Screen positions (top-left of the actor card) for each slot. */
   slots: Point[];
   /** Screen position (top-left of the card) for the Dealer when he visits. */
+  /** Where the Dealer stood when he was a 4th card; only used for days saved before he took an actor's spot. */
   dealerSlot: Point;
 }
 
@@ -88,6 +89,8 @@ export interface Quota {
   /** Set when the quota is met: total stars given, and how many of them were the early bonus. */
   starsAwarded?: number;
   earlyBonus?: number;
+  /** Met, but the stars aren't paid until the end of the due day. */
+  starsPending?: boolean;
 }
 
 export interface RunLocation {
@@ -177,6 +180,9 @@ export interface RunState {
   dealer: DealerVisit | null;
   /** Has the Dealer made his (guaranteed) first visit yet? */
   dealerSeen: boolean;
+  /** Set when a quota is met: the Dealer's next visit includes a deal costing at most
+   *  CONFIG.dealer.cheapAfterQuota. Optional so saves from before it still load. */
+  dealerCheapOwed?: boolean;
   status: 'active' | 'failed';
 }
 

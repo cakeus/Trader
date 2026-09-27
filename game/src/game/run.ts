@@ -10,9 +10,8 @@ export const CAPACITY = 4;
 export const FIRST_QUOTA = 25;
 export const QUOTA_DAYS = 7;
 export const RUN_LOCATIONS = 3;
-/** Base stars: STAR_STEP per quota index, capped at STAR_CAP (3, 6, 6, 6, ...). */
-export const STAR_STEP = 3;
-export const STAR_CAP = 6;
+/** Base stars for meeting any quota. */
+export const BASE_STARS = 5;
 /** Bonus stars per day a quota is met early. */
 export const EARLY_STAR = 1;
 
@@ -22,7 +21,7 @@ export function quotaFor(index: number): Quota {
     amount: Math.round((FIRST_QUOTA * CONFIG.quotaGrowth ** index) / 5) * 5,
     dueDay: QUOTA_DAYS * (index + 1),
     met: false,
-    stars: Math.min(STAR_STEP * (index + 1), STAR_CAP),
+    stars: BASE_STARS,
   };
 }
 
@@ -58,22 +57,25 @@ export function newRun(data: GameData, seed: number): RunState {
   return state;
 }
 
-/** Deal today's actors to locations, roll their deals, and see whether the Dealer visits.
+/** See whether the Dealer visits (he takes one actor's spot at his location), deal today's actors
+ *  to locations, and roll their deals.
  *  On a quota's due day, a buyer of the player's most common bag good is guaranteed to be present.
  *  On other days, if the player can't buy anything, a buyer of something in the bag is (see rescueGood). */
 function startDay(data: GameData, state: RunState): void {
+  state.dealer = rollDealer(data, state);
   const ids = state.locations.map((l) => l.id);
+  const dealerAt = state.dealer?.locationId;
+  const deal = (buyerOf?: string) => dealActors(data, state.seed, state.day, ids, buyerOf, dealerAt);
   let dealt: Record<string, string[]>;
   if (state.day === state.quota.dueDay) {
-    dealt = dealActors(data, state.seed, state.day, ids, guaranteedGood(data, state) ?? undefined);
+    dealt = deal(guaranteedGood(data, state) ?? undefined);
   } else {
-    dealt = dealActors(data, state.seed, state.day, ids);
+    dealt = deal();
     const rescue = rescueGood(data, state, Object.values(dealt).flat());
-    if (rescue) dealt = dealActors(data, state.seed, state.day, ids, rescue);
+    if (rescue) dealt = deal(rescue);
   }
   for (const loc of state.locations) loc.actorIds = dealt[loc.id];
   state.market = rollMarket(data, state);
-  state.dealer = rollDealer(data, state);
 }
 
 /** The bag good that gets a guaranteed buyer on due day: the most common one; ties go to
@@ -169,7 +171,7 @@ export function buyBlock(state: RunState, actorId: string, goodId: string): Trad
 
 export function sellBlock(state: RunState, actorId: string, goodId: string): TradeBlock {
   const o = offer(state, actorId, goodId);
-  if (CONFIG.limitStock && o.left <= 0) return 'noDemand';
+  if (CONFIG.limitDemand && o.left <= 0) return 'noDemand';
   if (countOf(state, goodId) <= 0) return 'noneOwned';
   return null;
 }
@@ -183,7 +185,7 @@ export function maxBuy(state: RunState, actorId: string, goodId: string): number
 
 export function maxSell(state: RunState, actorId: string, goodId: string): number {
   const n = countOf(state, goodId);
-  return Math.max(0, CONFIG.limitStock ? Math.min(n, offer(state, actorId, goodId).left) : n);
+  return Math.max(0, CONFIG.limitDemand ? Math.min(n, offer(state, actorId, goodId).left) : n);
 }
 
 /** Whether there's anything left to do at a location today: a good you can buy, a good you can
@@ -217,7 +219,7 @@ export function sell(data: GameData, state: RunState, actorId: string, goodId: s
   const n = Math.min(qty, maxSell(state, actorId, goodId));
   const o = offer(state, actorId, goodId);
   for (let i = 0; i < n; i++) state.inventory.splice(state.inventory.findIndex((it) => it.good === goodId), 1);
-  if (CONFIG.limitStock) o.left -= n;
+  if (CONFIG.limitDemand) o.left -= n;
   state.cash += n * o.price;
   state.stats.sold += n;
   updateQuota(state);
@@ -230,13 +232,23 @@ export function updateQuota(state: RunState): boolean {
   const q = state.quota;
   if (!q.met && state.cash >= q.amount) {
     q.met = true;
+    // the early bonus counts from the day it's met, but the stars are paid when the quota ends
     q.earlyBonus = EARLY_STAR * Math.max(0, q.dueDay - state.day);
     q.starsAwarded = q.stars + q.earlyBonus;
-    state.stars += q.starsAwarded;
-    state.stats.starsEarned += q.starsAwarded;
+    q.starsPending = true;
     return true;
   }
   return false;
+}
+
+/** Pay a met quota's stars (at the end of its due day). Saves from before stars were delayed
+ *  have no `starsPending` and were already paid. */
+function payStars(state: RunState, q: Quota): void {
+  if (!q.starsPending) return;
+  q.starsPending = false;
+  state.stars += q.starsAwarded ?? 0;
+  state.stats.starsEarned += q.starsAwarded ?? 0;
+  state.dealerCheapOwed = true;
 }
 
 export function daysLeft(state: RunState): number {
@@ -252,6 +264,7 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
       return 'failed';
     }
     state.stats.quotasMet++;
+    payStars(state, state.quota);
     state.quota = quotaFor(state.quota.index + 1);
     // p2: every 3rd quota (index % 3 === 2) will start a rule-changing event here.
     result = 'quotaPassed';

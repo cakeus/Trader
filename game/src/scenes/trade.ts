@@ -51,7 +51,7 @@ export class TradeDialog implements Scene {
       ui.nine(hot && !block ? 'row_hover' : 'row', row);
       ui.image(good.icon, row.x + 6, row.y + 6);
       ui.text(good.name, row.x + 46, row.y + 9, C.ink);
-      const qty = !CONFIG.limitStock ? '' : selling ? `Stock: ${o.left}   ` : `Wants: ${o.left}   `;
+      const qty = selling ? (CONFIG.limitStock ? `Stock: ${o.left}   ` : '') : CONFIG.limitDemand ? `Wants: ${o.left}   ` : '';
       ui.text(`${qty}You have: ${countOf(run, ag.good)}`, row.x + 46, row.y + 24, C.inkSoft);
 
       const right = row.x + row.w - 10;
@@ -103,8 +103,7 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string): void
   }
   if (!wasMet && run.quota.met) {
     app.sfx.play('quota');
-    const n = run.quota.starsAwarded ?? 0;
-    ui.toast(`Quota reached! +${n} star${n === 1 ? '' : 's'}`);
+    ui.toast('Quota reached!');
   }
   app.save();
 }

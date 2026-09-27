@@ -13,6 +13,7 @@ import { QuotaResult } from './quotaResult';
 import { quickTrade, TradeDialog } from './trade';
 
 const DEAL_LABEL: Record<Tier, { text: string; color: string } | undefined> = {
+  bad: { text: 'Bad deal', color: C.redLight },
   good: undefined,
   great: { text: 'Great deal', color: C.greenLight },
   amazing: { text: 'Amazing deal', color: C.cyan },
@@ -55,7 +56,10 @@ export class LocationScene implements Scene {
     });
 
     if (run.dealer?.locationId === this.locId) {
-      const base = this.card(ui, app.data.dealer, def.dealerSlot, 3, 'Stamps', C.gold);
+      // he stands in the spot an actor would have taken (days dealt before that use dealerSlot)
+      const n = actorsAt(run, this.locId).length;
+      const pos = n < def.actorSlots ? def.slots[n] : def.dealerSlot;
+      const base = this.card(ui, app.data.dealer, pos, n, 'Stamps', C.gold);
       if (ui.hover(base)) this.dealerTooltip(ui);
       if (ui.clicked(base)) {
         app.sfx.play('open');
@@ -133,7 +137,7 @@ export class LocationScene implements Scene {
       const lines: { text: string; color: string; suffix?: string; suffixColor?: string }[] = [
         { text: `${data.goods[g.good].name}  $${o.price}`, color: C.cream, suffix: deal?.text, suffixColor: deal?.color },
       ];
-      if (CONFIG.limitStock) {
+      if (seller ? CONFIG.limitStock : CONFIG.limitDemand) {
         const qty = seller ? `${o.left} in stock` : o.left > 0 ? `wants ${o.left}` : 'wants no more';
         lines.push({ text: qty, color: o.left > 0 ? C.muted : C.redLight });
       }

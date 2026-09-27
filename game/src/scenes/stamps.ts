@@ -1,7 +1,7 @@
 import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
-import { allDeals, describeDeal, owns } from '../game/dealer';
+import { allDeals, dealEnabled, describeDeal, owns } from '../game/dealer';
 import type { DealerDeal } from '../game/types';
 import { drawStamp, STAMP_SIZE } from './stampArt';
 
@@ -17,7 +17,8 @@ export class StampsDialog implements Scene {
     const run = app.run!;
     ui.dim(0.45);
 
-    const all = allDeals(app.data);
+    // disabled stamps only count (and show) if this run already owns them
+    const all = allDeals(app.data).filter((d) => dealEnabled(d) || owns(run, d));
     const mine = all.filter((d) => owns(run, d));
     const rows = Math.max(1, Math.ceil(mine.length / COLS));
     const gridW = COLS * PITCH - 6;
