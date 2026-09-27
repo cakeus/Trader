@@ -7,6 +7,8 @@ export interface GoodDef {
   /** 8x8 icon for compact lists. */
   iconSmall: string;
   blurb: string;
+  /** Dollars off this good's seller prices once the Dealer's discount is bought. */
+  dealerDiscount: number;
 }
 
 /** Deal tier rolled per actor/good each day. */
@@ -46,12 +48,23 @@ export interface LocationDef {
   actorSlots: number;
   /** Screen positions (top-left of the actor card) for each slot. */
   slots: Point[];
+  /** Screen position (top-left of the card) for the Dealer when he visits. */
+  dealerSlot: Point;
+}
+
+/** The star Dealer: not a trader, so he lives outside `actors`. */
+export interface DealerDef {
+  id: string;
+  name: string;
+  portrait: string;
+  blurb: string;
 }
 
 export interface GameData {
   goods: Record<string, GoodDef>;
   actors: Record<string, ActorDef>;
   locations: Record<string, LocationDef>;
+  dealer: DealerDef;
 }
 
 /** Today's terms for one actor + good. */
@@ -68,6 +81,11 @@ export interface Quota {
   dueDay: number;
   /** Latches true once cash reaches `amount`, even if cash later drops. */
   met: boolean;
+  /** Base stars for meeting this quota. */
+  stars: number;
+  /** Set when the quota is met: total stars given, and how many of them were the early bonus. */
+  starsAwarded?: number;
+  earlyBonus?: number;
 }
 
 export interface RunLocation {
@@ -80,6 +98,7 @@ export interface RunStats {
   bought: number;
   sold: number;
   quotasMet: number;
+  starsEarned: number;
 }
 
 export interface BagItem {
@@ -88,8 +107,27 @@ export interface BagItem {
   day: number;
 }
 
+/** One upgrade the Dealer can sell. */
+export type DealerDeal = { kind: 'bag' } | { kind: 'discount'; good: string } | { kind: 'sellChance' };
+
+/** Today's Dealer visit. */
+export interface DealerVisit {
+  locationId: string;
+  deal: DealerDeal;
+  cost: number;
+  sold: boolean;
+}
+
+/** Permanent upgrades bought from the Dealer this run. */
+export interface Perks {
+  /** Dollars off seller prices, per good. */
+  discounts: Record<string, number>;
+  /** Added to buyers' great and amazing weights (and taken twice from good). */
+  sellChance: number;
+}
+
 export interface RunState {
-  version: 3;
+  version: 4;
   seed: number;
   day: number;
   cash: number;
@@ -103,6 +141,13 @@ export interface RunState {
   /** Today's offers keyed by `${actorId}:${goodId}`. */
   market: Record<string, Offer>;
   stats: RunStats;
+  /** Unspent stars. */
+  stars: number;
+  perks: Perks;
+  /** Where the Dealer is today, or null if he isn't around. */
+  dealer: DealerVisit | null;
+  /** Has the Dealer made his (guaranteed) first visit yet? */
+  dealerSeen: boolean;
   status: 'active' | 'failed';
 }
 

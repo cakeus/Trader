@@ -2,8 +2,10 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
+import { describeDeal } from '../game/dealer';
 import { actorsAt, avgPaid, endDay, offer } from '../game/run';
-import type { Tier } from '../game/types';
+import type { Point, Role, Tier } from '../game/types';
+import { DealerDialog } from './dealer';
 import { Confirm, drawBackground, drawBag, drawHud, drawPortrait, HUD_H } from './common';
 import { GameOver } from './gameOver';
 import { MapScene } from './map';
@@ -34,24 +36,9 @@ export class LocationScene implements Scene {
 
     actorsAt(run, this.locId).forEach((id, i) => {
       const actor = app.data.actors[id];
-      const slot = def.slots[i];
-      const base: Rect = { x: slot.x, y: slot.y, w: CARD_W, h: CARD_H };
-      const hot = ui.hover(base);
-      const bob = Math.round(Math.sin(ui.t * 2 + i * 1.7) * 2) - (hot ? 3 : 0);
-      const r = { ...base, y: base.y + bob };
-
-      ui.nine(hot ? 'row_hover' : 'panel', r);
-      drawPortrait(ui, actor, r.x + (CARD_W - 64) / 2, r.y + 8);
-      const lines = ui.font.wrap(actor.name, CARD_W - 12).slice(0, 2);
-      lines.forEach((l, j) => ui.text(l, r.x + CARD_W / 2, r.y + 76 + j * 11, C.ink, { align: 'center' }));
-
-      // role tag above the card
-      const tag = actor.role === 'supplier' ? 'Seller' : 'Buyer';
-      const tw = ui.font.measure(tag) + 14;
-      ui.nine('panel_dark', { x: r.x + (CARD_W - tw) / 2, y: r.y - 12, w: tw, h: 18 });
-      ui.text(tag, r.x + CARD_W / 2, r.y - 7, actor.role === 'supplier' ? C.greenLight : C.sky, { align: 'center' });
-
-      if (hot) this.actorTooltip(ui, id);
+      const seller = actor.role === 'supplier';
+      const base = this.card(ui, actor, def.slots[i], i, seller ? 'Seller' : 'Buyer', seller ? C.greenLight : C.sky);
+      if (ui.hover(base)) this.actorTooltip(ui, id);
       if (ui.clicked(base)) {
         if (CONFIG.quickTrade) {
           quickTrade(app, ui, id);
@@ -62,9 +49,57 @@ export class LocationScene implements Scene {
       }
     });
 
+    if (run.dealer?.locationId === this.locId) {
+      const base = this.card(ui, app.data.dealer, def.dealerSlot, 3, 'Dealer', C.gold);
+      if (ui.hover(base)) this.dealerTooltip(ui);
+      if (ui.clicked(base)) {
+        app.sfx.play('open');
+        app.push(new DealerDialog(app));
+      }
+    }
+
     drawBag(app, ui, 8, H - 56);
     if (ui.button({ x: W - 136, y: H - 50, w: 128, h: 38 }, 'End Day', { scale: 2 })) this.tryEndDay();
     drawHud(app, ui);
+  }
+
+  /** A bobbing portrait card with a tag above it. Returns its hit rect (without the bob). */
+  private card(ui: Ui, who: { portrait: string; name: string; role?: Role }, pos: Point, i: number, tag: string, tagColor: string): Rect {
+    const base: Rect = { x: pos.x, y: pos.y, w: CARD_W, h: CARD_H };
+    const hot = ui.hover(base);
+    const bob = Math.round(Math.sin(ui.t * 2 + i * 1.7) * 2) - (hot ? 3 : 0);
+    const r = { ...base, y: base.y + bob };
+
+    ui.nine(hot ? 'row_hover' : 'panel', r);
+    drawPortrait(ui, who, r.x + (CARD_W - 64) / 2, r.y + 8);
+    const lines = ui.font.wrap(who.name, CARD_W - 12).slice(0, 2);
+    lines.forEach((l, j) => ui.text(l, r.x + CARD_W / 2, r.y + 76 + j * 11, C.ink, { align: 'center' }));
+
+    const tw = ui.font.measure(tag) + 14;
+    ui.nine('panel_dark', { x: r.x + (CARD_W - tw) / 2, y: r.y - 12, w: tw, h: 18 });
+    ui.text(tag, r.x + CARD_W / 2, r.y - 7, tagColor, { align: 'center' });
+    return base;
+  }
+
+  private dealerTooltip(ui: Ui): void {
+    const { data } = this.app;
+    const run = this.app.run!;
+    const d = run.dealer!;
+    const deal = describeDeal(data, d.deal);
+    const w = 220;
+    const body = ui.font.wrap(deal.body, w - 16);
+    const lh = ui.font.lineHeight;
+    const status = d.sold
+      ? { text: 'Sold out. Come back another day.', color: C.redLight }
+      : run.stars < d.cost
+        ? { text: `Costs ${d.cost} stars (you have ${run.stars})`, color: C.redLight }
+        : { text: `Costs ${d.cost} stars`, color: C.gold };
+    ui.tooltip(w, 30 + body.length * lh + 22, (x, y) => {
+      ui.text(data.dealer.name, x, y, C.gold);
+      ui.text(deal.title, x, y + 14, C.cream);
+      body.forEach((l, i) => ui.text(l, x, y + 28 + i * lh, C.muted));
+      ui.text(status.text, x, y + 32 + body.length * lh, status.color);
+    });
   }
 
   private actorTooltip(ui: Ui, actorId: string): void {

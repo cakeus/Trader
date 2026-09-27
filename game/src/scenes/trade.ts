@@ -103,7 +103,8 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string): void
   }
   if (!wasMet && run.quota.met) {
     app.sfx.play('quota');
-    ui.toast('Quota reached!');
+    const n = run.quota.starsAwarded ?? 0;
+    ui.toast(`Quota reached! +${n} star${n === 1 ? '' : 's'}`);
   }
   app.save();
 }

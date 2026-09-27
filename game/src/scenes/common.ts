@@ -2,10 +2,12 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { daysLeft } from '../game/run';
-import type { ActorDef } from '../game/types';
+import type { ActorDef, Role } from '../game/types';
 import { PauseMenu } from './pause';
 
 export const HUD_H = 30;
+/** Star gold that still reads on the paper panel. */
+export const STAR_INK = '#b8761c';
 
 export function drawBackground(ui: Ui, path: string): void {
   if (ui.image(path, 0, 0)) return;
@@ -16,14 +18,14 @@ export function drawBackground(ui: Ui, path: string): void {
   ui.ctx.fillRect(0, 0, W, H);
 }
 
-export function drawPortrait(ui: Ui, actor: ActorDef, x: number, y: number): void {
+export function drawPortrait(ui: Ui, actor: Pick<ActorDef, 'portrait' | 'name'> & { role?: Role }, x: number, y: number): void {
   if (ui.image(actor.portrait, x, y)) return;
-  ui.ctx.fillStyle = actor.role === 'supplier' ? '#8ecf8a' : '#8ab8e8';
+  ui.ctx.fillStyle = actor.role === 'supplier' ? '#8ecf8a' : actor.role === 'buyer' ? '#8ab8e8' : '#e8c86a';
   ui.ctx.fillRect(x, y, 64, 64);
   ui.text(actor.name[0], x + 32, y + 18, C.ink, { align: 'center', scale: 4 });
 }
 
-/** Top bar: day, cash, bag, quota, and the Menu button (Esc also opens it). */
+/** Top bar: day, cash, bag, stars, quota, and the Menu button (Esc also opens it). */
 export function drawHud(app: App, ui: Ui): void {
   const run = app.run!;
   ui.nine('panel_dark', { x: -8, y: -8, w: W + 16, h: HUD_H + 8 });
@@ -34,11 +36,13 @@ export function drawHud(app: App, ui: Ui): void {
   ui.text(`$${run.cash}`, 108, ty, C.gold);
   ui.image('assets/ui/icon_bag.png', 158, 6);
   ui.text(`${run.inventory.length}/${run.capacity}`, 178, ty, C.cream);
+  ui.image('assets/ui/icon_star.png', 216, 6);
+  ui.text(`${run.stars}`, 236, ty, C.gold);
 
   const q = run.quota;
-  const qx = 230;
-  ui.image('assets/ui/icon_star.png', qx, 6);
-  const label = `Quota $${q.amount} by end of Day ${q.dueDay}`;
+  const qx = 262;
+  ui.image('assets/ui/icon_flag.png', qx, 6);
+  const label = `Quota $${q.amount} by Day ${q.dueDay}`;
   ui.text(label, qx + 20, ty, C.cream);
   const sx = qx + 26 + ui.font.measure(label);
   if (q.met) {

@@ -141,8 +141,22 @@ def star(S):
            cuts=(-0.2, 0.5))
 
 
+def flag(S):
+    pole = rect(3, 1, 2, 14)
+    S.fill(pole, hexc("#c8a078"))
+    S.fill(edge(pole), hexc("#5a3a2a"))
+    rows = ["#########.",
+            "##########",
+            "#########.",
+            "########..",
+            "#######..."]
+    m = {(x + 5, y + 2) for y, r in enumerate(rows) for x, c in enumerate(r) if c == "#"}
+    S.blob(m, [hexc("#ff9a8a"), hexc("#e8534e"), hexc("#b83a44")], hexc("#5a1a2a"), cuts=(-0.3, 0.4))
+    S.set(4, 1, hexc("#fffaf0"))
+
+
 for n, f in (("coin", coin), ("bag", bag), ("calendar", calendar), ("check", check),
-             ("pin", pin), ("star", star)):
+             ("pin", pin), ("star", star), ("flag", flag)):
     icon(n, f)
 
 # --- cursor (12x14 arrow) -------------------------------------------------------
@@ -171,7 +185,7 @@ S.save("cursor", "ui", scale=12, show=False)
 import os
 from pixelkit import ASSETS, PREVIEWS
 names = ["panel", "panel_dark", "btn", "btn_hover", "btn_down", "btn_disabled", "row", "row_hover",
-         "icon_coin", "icon_bag", "icon_calendar", "icon_check", "icon_pin", "icon_star", "cursor"]
+         "icon_coin", "icon_bag", "icon_calendar", "icon_check", "icon_pin", "icon_star", "icon_flag", "cursor"]
 sheet = Image.new("RGBA", (len(names) * 28 + 4, 30), (120, 150, 130, 255))
 for i, n in enumerate(names):
     im = Image.open(os.path.join(ASSETS, "ui", n + ".png"))

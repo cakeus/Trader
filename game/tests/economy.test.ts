@@ -3,12 +3,13 @@ import { rngFor } from '../src/engine/rng';
 import { CONFIG } from '../src/game/config';
 import { buildData } from '../src/game/data';
 import { dealActors } from '../src/game/deal';
-import { rollMarket, rollTier } from '../src/game/economy';
+import { buyDealerDeal, dealerBlock, eligibleDeals, rollDealer } from '../src/game/dealer';
+import { buyerWeights, rollMarket, rollTier } from '../src/game/economy';
 import {
   avgPaid, buy, buyBlock, CAPACITY, endDay, FIRST_QUOTA, guaranteedGood, newRun, offer, quotaFor, sell, sellBlock,
-  START_CASH,
+  START_CASH, updateQuota,
 } from '../src/game/run';
-import { type RunState, TIERS } from '../src/game/types';
+import { type DealerDeal, type RunState, TIERS } from '../src/game/types';
 import { loadTestData } from './helpers';
 
 const data = loadTestData();
@@ -45,19 +46,29 @@ describe('data', () => {
     for (const l of Object.values(data.locations)) expect(l.actorSlots).toBe(3);
   });
 
+  it('rejects bad dealer discounts and missing dealer slots', () => {
+    const goods = Object.values(data.goods);
+    const actors = Object.values(data.actors);
+    const locations = Object.values(data.locations);
+    const badGoods = goods.map((g, i) => (i === 0 ? { ...g, dealerDiscount: -1 } : g));
+    expect(() => buildData(badGoods, actors, locations, data.dealer)).toThrow(/dealerDiscount/);
+    const noSlot = locations.map((l, i) => (i === 0 ? { ...l, dealerSlot: undefined as never } : l));
+    expect(() => buildData(goods, actors, noSlot, data.dealer)).toThrow(/dealerSlot/);
+  });
+
   it('rejects price lists whose tiers are not ordered in the player\'s favour', () => {
     const goods = Object.values(data.goods);
     const actors = Object.values(data.actors);
     const locations = Object.values(data.locations);
-    expect(() => buildData(goods, actors, locations)).not.toThrow();
+    expect(() => buildData(goods, actors, locations, data.dealer)).not.toThrow();
     const flip = (role: string) =>
       actors.map((a) =>
         a.role === role
           ? { ...a, goods: a.goods.map((g) => ({ ...g, prices: { good: g.prices.amazing, great: g.prices.great, amazing: g.prices.good } })) }
           : a,
       );
-    expect(() => buildData(goods, flip('supplier'), locations)).toThrow(/good -> great -> amazing/);
-    expect(() => buildData(goods, flip('buyer'), locations)).toThrow(/good -> great -> amazing/);
+    expect(() => buildData(goods, flip('supplier'), locations, data.dealer)).toThrow(/good -> great -> amazing/);
+    expect(() => buildData(goods, flip('buyer'), locations, data.dealer)).toThrow(/good -> great -> amazing/);
   });
 });
 
@@ -193,7 +204,7 @@ describe('trading', () => {
     const s = newRun(data, 7);
     expect(s.cash).toBe(START_CASH);
     expect(s.capacity).toBe(CAPACITY);
-    expect(s.quota).toEqual({ index: 0, amount: FIRST_QUOTA, dueDay: 7, met: false });
+    expect(s.quota).toEqual({ index: 0, amount: FIRST_QUOTA, dueDay: 7, met: false, stars: 3 });
   });
 
   it('buy/sell move cash and inventory, recording what was paid', () => {
@@ -335,5 +346,181 @@ describe('quota', () => {
     endDay(data, s);
     expect(s.visited).toBeNull();
     expect(JSON.stringify(s.market)).not.toBe(before);
+  });
+});
+
+/** Meet the current quota right now by handing over the cash. */
+function meetQuota(s: RunState): void {
+  s.cash = s.quota.amount;
+  updateQuota(s);
+}
+
+describe('stars', () => {
+  it('base stars follow the quota schedule: 3, then 6 from quota 2 on', () => {
+    expect([0, 1, 2, 3, 6].map((i) => quotaFor(i).stars)).toEqual([3, 6, 6, 6, 6]);
+  });
+
+  it('are awarded once when the quota is met, plus 1 per day early', () => {
+    const s = newRun(data, 21);
+    endDay(data, s); // day 2, 5 days early
+    meetQuota(s);
+    expect(s.quota.earlyBonus).toBe(5);
+    expect(s.quota.starsAwarded).toBe(8);
+    expect(s.stars).toBe(8);
+    s.cash += 100;
+    updateQuota(s);
+    expect(s.stars).toBe(8);
+    expect(s.stats.starsEarned).toBe(8);
+  });
+
+  it('give no bonus when met on the due day', () => {
+    const s = newRun(data, 22);
+    while (s.day < s.quota.dueDay) endDay(data, s);
+    meetQuota(s);
+    expect(s.quota.earlyBonus).toBe(0);
+    expect(s.stars).toBe(3);
+  });
+});
+
+describe('dealer', () => {
+  it('never visits before any stars are earned', () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const s = newRun(data, seed);
+      for (let d = 1; d < 7; d++) {
+        expect(s.dealer).toBeNull();
+        endDay(data, s);
+      }
+    }
+  });
+
+  it('is guaranteed the morning after the first stars, at a run location', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      const s = newRun(data, seed);
+      meetQuota(s);
+      expect(s.dealer).toBeNull(); // not the same day
+      endDay(data, s);
+      expect(s.dealer).not.toBeNull();
+      expect(s.locations.map((l) => l.id)).toContain(s.dealer!.locationId);
+      expect(s.dealer!.sold).toBe(false);
+      expect(s.dealerSeen).toBe(true);
+    }
+  });
+
+  it('then visits about half the days, deterministically', () => {
+    let visits = 0;
+    let days = 0;
+    for (let seed = 0; seed < 40; seed++) {
+      const s = newRun(data, seed);
+      meetQuota(s);
+      endDay(data, s);
+      const a = JSON.parse(JSON.stringify(s)) as RunState;
+      for (let d = 0; d < 5; d++) {
+        endDay(data, s);
+        endDay(data, a);
+        expect(a.dealer).toEqual(s.dealer);
+        visits += +(s.dealer !== null);
+        days++;
+      }
+    }
+    expect(visits / days).toBeGreaterThan(0.35);
+    expect(visits / days).toBeLessThan(0.65);
+  });
+
+  /** A run where the dealer is here today, offering `deal`, with `stars` to spend. */
+  function withDealer(seed: number, deal: DealerDeal, stars = 10): RunState {
+    const s = newRun(data, seed);
+    s.stars = stars;
+    s.dealer = { locationId: s.locations[0].id, deal, cost: CONFIG.dealer.cost[deal.kind], sold: false };
+    return s;
+  }
+
+  it('blocks buying without enough stars, and sells only once a visit', () => {
+    const s = withDealer(1, { kind: 'bag' }, 2);
+    expect(dealerBlock(s)).toBe('noStars');
+    expect(buyDealerDeal(data, s)).toBe(false);
+    s.stars = 7;
+    expect(buyDealerDeal(data, s)).toBe(true);
+    expect(s.stars).toBe(4);
+    expect(dealerBlock(s)).toBe('sold');
+    expect(buyDealerDeal(data, s)).toBe(false);
+    expect(s.stars).toBe(4);
+  });
+
+  it('bag deal adds a slot', () => {
+    const s = withDealer(2, { kind: 'bag' });
+    buyDealerDeal(data, s);
+    expect(s.capacity).toBe(CAPACITY + 1);
+  });
+
+  it('discount lowers sellers of that good right away (floor $1), not buyers, and is not offered again', () => {
+    const s = withDealer(3, { kind: 'discount', good: 'tools' });
+    const seller = withActor(s, 'supplier', 'tools');
+    const buyer = withActor(s, 'buyer', 'tools');
+    const sellerBefore = offer(s, seller, 'tools').price;
+    const buyerBefore = offer(s, buyer, 'tools').price;
+    buyDealerDeal(data, s);
+    expect(offer(s, seller, 'tools').price).toBe(Math.max(1, sellerBefore - data.goods.tools.dealerDiscount));
+    expect(offer(s, buyer, 'tools').price).toBe(buyerBefore);
+    expect(eligibleDeals(data, s)).not.toContainEqual({ kind: 'discount', good: 'tools' });
+    // later days keep the discount
+    for (let d = 0; d < 5; d++) {
+      endDay(data, s);
+      for (const l of s.locations)
+        for (const id of l.actorIds)
+          for (const ag of data.actors[id].goods)
+            if (ag.good === 'tools' && data.actors[id].role === 'supplier') {
+              const o = offer(s, id, 'tools');
+              expect(o.price).toBe(Math.max(1, ag.prices[o.tier] - data.goods.tools.dealerDiscount));
+            }
+    }
+  });
+
+  it('sellChance shifts buyer tiers towards great/amazing, but not sellers', () => {
+    const s = withDealer(4, { kind: 'sellChance' });
+    buyDealerDeal(data, s);
+    s.dealer!.sold = false;
+    buyDealerDeal(data, s);
+    expect(s.perks.sellChance).toBeCloseTo(0.1);
+    const w = buyerWeights(s);
+    expect(w.good).toBeCloseTo(0.3);
+    expect(w.great).toBeCloseTo(0.4);
+    expect(w.amazing).toBeCloseTo(0.3);
+    const counts = { buyer: { good: 0, n: 0 }, supplier: { good: 0, n: 0 } };
+    for (let d = 0; d < 300; d++) {
+      s.quota.dueDay = 9999; // keep the run alive
+      endDay(data, s);
+      for (const l of s.locations)
+        for (const id of l.actorIds)
+          for (const ag of data.actors[id].goods) {
+            const c = counts[data.actors[id].role];
+            c.n++;
+            c.good += +(offer(s, id, ag.good).tier === 'good');
+          }
+    }
+    expect(counts.buyer.good / counts.buyer.n).toBeCloseTo(0.3, 1);
+    expect(counts.supplier.good / counts.supplier.n).toBeCloseTo(0.5, 1);
+  });
+
+  it("stops offering sellChance once buyers' good weight would drop below the minimum", () => {
+    const s = newRun(data, 5);
+    const has = () => eligibleDeals(data, s).some((d) => d.kind === 'sellChance');
+    let bought = 0;
+    while (has()) {
+      s.perks.sellChance += CONFIG.dealer.sellChanceStep;
+      bought++;
+    }
+    expect(bought).toBe(4);
+    expect(buyerWeights(s).good).toBeCloseTo(CONFIG.dealer.minGoodWeight);
+  });
+
+  it('never offers a discount on a good that already has one', () => {
+    const s = newRun(data, 6);
+    s.stats.starsEarned = 1;
+    for (const g of Object.keys(data.goods)) s.perks.discounts[g] = 1;
+    for (let d = 1; d < 60; d++) {
+      s.day = d;
+      const v = rollDealer(data, s);
+      if (v) expect(v.deal.kind).not.toBe('discount');
+    }
   });
 });

@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { rngFor } from '../src/engine/rng';
 import { CONFIG } from '../src/game/config';
+import { buyDealerDeal } from '../src/game/dealer';
 import { actorsAt, buy, endDay, maxSell, newRun, offer, sell, visit } from '../src/game/run';
 import { type GameData, type RunState, TIERS } from '../src/game/types';
 import { loadTestData } from './helpers';
@@ -31,6 +32,8 @@ function resale(good: string): number {
 
 function tradeAt(s: RunState, loc: string): void {
   visit(s, loc);
+  // any affordable dealer upgrade is worth it
+  if (s.dealer?.locationId === loc) buyDealerDeal(data, s);
   const actors = actorsAt(s, loc);
   // sell: highest-paying buyer first
   const sales = actors
@@ -144,5 +147,33 @@ describe('balance: first quota', () => {
     expect(oracleMet / SEEDS).toBeGreaterThanOrEqual(0.9);
     expect(randomMet).toBeLessThan(sensibleMet);
     expect(randomMet / SEEDS).toBeLessThan(0.15);
+  });
+});
+
+/** Play until the run fails (or `maxQuotas` are passed); returns how many quotas were met. */
+function playRun(seed: number, policy: Policy, maxQuotas: number): number {
+  const s = newRun(data, seed);
+  const r = rngFor(seed, 'sim');
+  while (s.stats.quotasMet < maxQuotas) {
+    tradeAt(s, policy(s, () => r.next()));
+    if (endDay(data, s) === 'failed') break;
+  }
+  return s.stats.quotasMet;
+}
+
+describe('balance: long run', () => {
+  it('reports survival after each quota (log only)', () => {
+    const RUNS = 500;
+    const MAX = 6;
+    for (const [name, policy] of [['sensible', sensible], ['random', random]] as const) {
+      const alive = Array(MAX).fill(0);
+      for (let seed = 1; seed <= RUNS; seed++) {
+        const met = playRun(seed, policy, MAX);
+        for (let q = 0; q < met; q++) alive[q]++;
+      }
+      const cols = alive.map((n, q) => `day ${7 * (q + 1)}: ${Math.round((100 * n) / RUNS)}%`).join(' | ');
+      console.log(`${name.padEnd(8)} ${cols}`);
+    }
+    expect(true).toBe(true);
   });
 });

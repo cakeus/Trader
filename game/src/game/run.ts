@@ -1,6 +1,7 @@
 import { rngFor } from '../engine/rng';
 import { CONFIG } from './config';
 import { dealActors } from './deal';
+import { rollDealer } from './dealer';
 import { offerKey, rollMarket } from './economy';
 import type { EndDayResult, GameData, Offer, Quota, RunState } from './types';
 
@@ -9,6 +10,11 @@ export const CAPACITY = 4;
 export const FIRST_QUOTA = 25;
 export const QUOTA_DAYS = 7;
 export const RUN_LOCATIONS = 3;
+/** Base stars: STAR_STEP per quota index, capped at STAR_CAP (3, 6, 6, 6, ...). */
+export const STAR_STEP = 3;
+export const STAR_CAP = 6;
+/** Bonus stars per day a quota is met early. */
+export const EARLY_STAR = 1;
 
 export function quotaFor(index: number): Quota {
   return {
@@ -16,6 +22,7 @@ export function quotaFor(index: number): Quota {
     amount: FIRST_QUOTA * 2 ** index,
     dueDay: QUOTA_DAYS * (index + 1),
     met: false,
+    stars: Math.min(STAR_STEP * (index + 1), STAR_CAP),
   };
 }
 
@@ -26,7 +33,7 @@ export function newRun(data: GameData, seed: number): RunState {
     .slice(0, RUN_LOCATIONS)
     .map((id) => ({ id, actorIds: [] as string[] }));
   const state: RunState = {
-    version: 3,
+    version: 4,
     seed,
     day: 1,
     cash: START_CASH,
@@ -36,7 +43,11 @@ export function newRun(data: GameData, seed: number): RunState {
     quota: quotaFor(0),
     visited: null,
     market: {},
-    stats: { bought: 0, sold: 0, quotasMet: 0 },
+    stats: { bought: 0, sold: 0, quotasMet: 0, starsEarned: 0 },
+    stars: 0,
+    perks: { discounts: {}, sellChance: 0 },
+    dealer: null,
+    dealerSeen: false,
     status: 'active',
   };
   startDay(data, state);
@@ -44,13 +55,14 @@ export function newRun(data: GameData, seed: number): RunState {
   return state;
 }
 
-/** Deal today's actors to locations and roll their deals. On a quota's due day,
- *  a buyer of the player's most common bag good is guaranteed to be present. */
+/** Deal today's actors to locations, roll their deals, and see whether the Dealer visits.
+ *  On a quota's due day, a buyer of the player's most common bag good is guaranteed to be present. */
 function startDay(data: GameData, state: RunState): void {
   const guarantee = state.day === state.quota.dueDay ? guaranteedGood(data, state) : undefined;
   const dealt = dealActors(data, state.seed, state.day, state.locations.map((l) => l.id), guarantee ?? undefined);
   for (const loc of state.locations) loc.actorIds = dealt[loc.id];
   state.market = rollMarket(data, state);
+  state.dealer = rollDealer(data, state);
 }
 
 /** The bag good that gets a guaranteed buyer on due day: the most common one; ties go to
@@ -163,10 +175,16 @@ export function sell(data: GameData, state: RunState, actorId: string, goodId: s
   return n;
 }
 
-/** Latch the quota as met once cash reaches it. Returns true if it just became met. */
+/** Latch the quota as met once cash reaches it, awarding its stars plus the early bonus.
+ *  Returns true if it just became met. */
 export function updateQuota(state: RunState): boolean {
-  if (!state.quota.met && state.cash >= state.quota.amount) {
-    state.quota.met = true;
+  const q = state.quota;
+  if (!q.met && state.cash >= q.amount) {
+    q.met = true;
+    q.earlyBonus = EARLY_STAR * Math.max(0, q.dueDay - state.day);
+    q.starsAwarded = q.stars + q.earlyBonus;
+    state.stars += q.starsAwarded;
+    state.stats.starsEarned += q.starsAwarded;
     return true;
   }
   return false;

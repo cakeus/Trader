@@ -56,11 +56,12 @@ export class MapScene implements Scene {
       { label: 'Buys', color: C.sky, goods: goodsFor('buyer') },
       { label: 'Sells', color: C.greenLight, goods: goodsFor('supplier') },
     ].filter((r) => r.goods.length > 0);
+    const dealer = this.app.run!.dealer?.locationId === locId;
 
     const w = 220;
     const blurb = ui.font.wrap(def.blurb, w - 16);
     const lh = ui.font.lineHeight;
-    const h = 14 + lh + blurb.length * lh + 6 + rows.length * 12 + 4;
+    const h = 14 + lh + blurb.length * lh + 6 + rows.length * 12 + (dealer ? 14 : 0) + 4;
     ui.tooltip(w, h, (x, y) => {
       ui.text(def.name, x, y, C.gold);
       blurb.forEach((l, i) => ui.text(l, x, y + lh + i * lh, C.muted));
@@ -69,6 +70,10 @@ export class MapScene implements Scene {
         ui.text(r.label, x, ry, r.color);
         r.goods.forEach((g, i) => ui.image(data.goods[g].iconSmall, x + 34 + i * 11, ry));
         ry += 12;
+      }
+      if (dealer) {
+        ui.image('assets/ui/icon_star.png', x - 2, ry - 2);
+        ui.text(`${data.dealer.name} is here!`, x + 16, ry + 2, C.gold);
       }
     });
   }

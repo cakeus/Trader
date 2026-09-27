@@ -9,6 +9,7 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 - Each day you pick one of 3 locations on the map. The map tooltips show which goods each location buys and sells today.
 - At the location you click an actor to trade: click for 1 unit, shift-click for the max. Then you press End Day.
 - Quota *n* is $25·2ⁿ, due at the end of day 7·(*n*+1). A quota counts as met as soon as your cash reaches it, even if you spend below it afterwards. Missing a quota ends the run.
+- Meeting a quota earns **stars** (see below), which you spend at the Dealer.
 - The pause menu (Menu button or Esc) has sound on/off, Save & Quit, Abandon Run, and the run's seed.
 
 ## Economy rules
@@ -25,20 +26,33 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
 - **Hover tooltips:** hovering an actor shows the price, plus a "Great deal" (green) or "Amazing deal" (cyan) label when the tier isn't `good`. It also shows the stock or demand, and buyers show "Average paid" for units still in your bag.
 - **Quick trade:** `CONFIG.quickTrade` (on) is the click-to-trade behaviour. Turning it off brings back the old trade dialog (`src/scenes/trade.ts`).
 
+## Stars and the Dealer
+
+- **Stars:** `updateQuota` awards them the moment a quota is met: the quota's base `stars` (3, then 6 from quota 2 on; `STAR_STEP`/`STAR_CAP` in `run.ts`) plus `EARLY_STAR` (1) per day before the due day. `starsAwarded`/`earlyBonus` are recorded on the quota for the QuotaResult screen.
+- **Dealer** (`src/game/dealer.ts`, content in `public/data/dealer.json`): not one of the 16 actors, so `dealActors` ignores him. `rollDealer` runs in `startDay`: nothing until stars have been earned, a guaranteed first visit the next morning (`dealerSeen`), then `CONFIG.dealer.chance` (50%) per day, at one random run location. He stands as a 4th card at the location's `dealerSlot`. Deterministic for (seed, day).
+- **Deals** (one per visit, uniform over `eligibleDeals`, each costing `CONFIG.dealer.cost`, 3★):
+  - `bag`: +1 capacity (repeatable).
+  - `discount`: `dealerDiscount` (per good in `goods.json`) off every seller of that good, floor $1, applied immediately. Doesn't stack: a discounted good is never offered again.
+  - `sellChance`: +`sellChanceStep` (5%) to buyers' great and amazing weights, taken from good (`buyerWeights` in `economy.ts`). Applies from the next day's roll; offered until buyers' good weight would drop below `minGoodWeight`.
+- UI: HUD star counter (quota uses `icon_flag`), map tooltip line, card + tooltip + `DealerDialog` (`src/scenes/dealer.ts`).
+
 ## Balance and the scaling wall (next phase: earnable player scaling)
 
 - **First-quota sim** (`npm test`, `tests/sim.test.ts`): the best-possible player reaches it 100% of the time, the sensible player about 63% and the random player about 13%. That's accepted as "easier for now".
-- **Long-run sim** (500 runs): the table shows the share of runs still alive after each quota.
+- **Long-run sim** (`balance: long run` in `tests/sim.test.ts`, 500 runs, log only): the share of runs still alive after each quota. Sim players buy any affordable Dealer deal.
 
   | Player | Day 7 | Day 14 | Day 21 | Day 28+ |
   |---|---|---|---|---|
-  | Sensible | 62% | 41% | 4% | 0% |
+  | Sensible | 62% | 40% | 7% | 0% |
   | Random | 15% | 2% | 0% | 0% |
+
+  (Before stars/Dealer: sensible 62 / 41 / 4 / 0%.)
 
 - **Why:** income is roughly linear while quotas double every week. Four bag slots at about $1.40–$2.30 expected profit per unit, with one location a day, earn roughly $30–60 a week.
 - **Scaling knobs:**
   - `CAPACITY`, `START_CASH`, `FIRST_QUOTA`, `QUOTA_DAYS` and `quotaFor()` in `src/game/run.ts`.
-  - `CONFIG` in `src/game/config.ts`.
+  - `STAR_STEP`, `STAR_CAP`, `EARLY_STAR` in `run.ts`.
+  - `CONFIG` in `src/game/config.ts` (including `CONFIG.dealer`).
   - Price lists and `qty` in `public/data/actors.json`.
   - A placeholder for a rule-changing event every 3rd quota in `endDay()`.
 
@@ -52,6 +66,7 @@ A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas gam
   - `src/game/`: pure logic with no DOM.
     - `run.ts`: the run state, trading, quotas and `endDay`.
     - `deal.ts`: the daily actor deal.
+    - `dealer.ts`: the star Dealer's visits and upgrades.
     - `economy.ts`: the tier and qty rolls.
     - `config.ts`: rule switches and tier weights.
     - `data.ts`: loading and validation.
