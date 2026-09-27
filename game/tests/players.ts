@@ -7,9 +7,8 @@
  * A Profile is a strategy a real player might try: which location to pick, which
  * Dealer deals to buy (and in what order), and which goods to favour.
  */
-import { CONFIG } from '../src/game/config';
 import { buyDealerDeal, dealFromKey, dealGood, isUniversal } from '../src/game/dealer';
-import { buyerWeights, sellerPrice } from '../src/game/economy';
+import { sellerPrice, tierPrice, tierWeights } from '../src/game/economy';
 import { actorsAt, buy, maxSell, offer, sell, visit } from '../src/game/run';
 import { type DealerDeal, type RunState, TIERS } from '../src/game/types';
 import { loadTestData } from './helpers';
@@ -19,8 +18,8 @@ export const data = loadTestData();
 /** Deals bought so far, by kind (a sim can reset and read this). */
 export const SIM = {
   bought: {
-    bag: 0, discount: 0, sellChance: 0, stock: 0, buyerStock: 0,
-    discountAll: 0, stockAll: 0, buyerStockAll: 0, sellChanceAll: 0,
+    bag: 0, discount: 0, luck: 0, stock: 0, buyerStock: 0,
+    discountAll: 0, stockAll: 0, buyerStockAll: 0, luckAll: 0,
   } as Record<
     DealerDeal['kind'],
     number
@@ -30,13 +29,16 @@ export const SIM = {
 export const clone = (s: RunState): RunState => JSON.parse(JSON.stringify(s));
 
 /** Tier-weighted average price for an actor's good, after this run's perks: sellers
- *  apply the good's discount, buyers use the sellChance-boosted tier weights. */
+ *  apply the good's discount, and both use the luck-boosted tier weights. */
 export function expectedPrice(s: RunState, actorId: string, good: string): number {
   const a = data.actors[actorId];
   const ag = a.goods.find((g) => g.good === good)!;
   const seller = a.role === 'supplier';
-  const w = seller ? CONFIG.dealWeights : buyerWeights(s, good);
-  return TIERS.reduce((sum, t) => sum + w[t] * (seller ? sellerPrice(s, good, ag.prices[t]) : ag.prices[t]), 0);
+  const w = tierWeights(s, good, a.role);
+  return TIERS.filter((t) => w[t]).reduce((sum, t) => {
+    const p = tierPrice(ag.prices, t);
+    return sum + w[t]! * (seller ? sellerPrice(s, good, p) : p);
+  }, 0);
 }
 
 /** Expected resale price for a good. Actors are re-dealt daily, so average over every buyer of it. */
@@ -115,7 +117,7 @@ export function focusGood(s: RunState): string | null {
 
 /** Rough value of each deal kind for a player who wants them all (bag slots scale best). */
 const DEAL_VALUE: Record<DealerDeal['kind'], number> = {
-  bag: 5, sellChanceAll: 4, discountAll: 4, stockAll: 3, buyerStockAll: 3, discount: 2, sellChance: 1.5, stock: 1,
+  bag: 5, luckAll: 4, discountAll: 4, stockAll: 3, buyerStockAll: 3, discount: 2, luck: 1.5, stock: 1,
   buyerStock: 1,
 };
 
@@ -197,7 +199,7 @@ function lossFree(s: RunState, good: string, price: number): number {
 }
 
 export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.impulse): void {
-  visit(s, loc);
+  visit(data, s, loc);
   // buy the most wanted affordable deal, re-ranking after each purchase (a deal can change what's wanted)
   for (const dealer = s.dealer; dealer?.locationId === loc; ) {
     const next = dealer.offers

@@ -3,8 +3,9 @@ import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
 import { describeDeal } from '../game/dealer';
-import { actorsAt, avgPaid, canAct, endDay, offer } from '../game/run';
+import { actorsAt, avgPaid, buyoutOffer, canAct, endDay, offer } from '../game/run';
 import type { Point, Role, Tier } from '../game/types';
+import { BuyoutDialog } from './buyout';
 import { DealerDialog } from './dealer';
 import { Confirm, drawBackground, drawBag, drawHud, drawPortrait, HUD_H } from './common';
 import { GameOver } from './gameOver';
@@ -172,7 +173,9 @@ export class LocationScene implements Scene {
   private tryEndDay(): void {
     const { app } = this;
     const run = app.run!;
-    if (run.day >= run.quota.dueDay && !run.quota.met && run.cash < run.quota.amount) {
+    if (buyoutOffer(app.data, run) !== null) {
+      app.push(new BuyoutDialog(app, () => this.doEndDay()));
+    } else if (run.day >= run.quota.dueDay && !run.quota.met && run.cash < run.quota.amount) {
       const short = run.quota.amount - run.cash;
       app.push(
         new Confirm(app, 'Last day!', `The quota is due tonight and you're $${short} short. End the day anyway?`,

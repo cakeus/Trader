@@ -6,10 +6,10 @@ import { dealActors } from '../src/game/deal';
 import {
   allDeals, BAG_TIERS, buyDealerDeal, dealCost, dealEnabled, dealerBlock, dealFromKey, dealKey, eligibleDeals, isRanked, isUniversal, rollDealer,
 } from '../src/game/dealer';
-import { buyerWeights, extraDemand, rollMarket, rollStock, rollTier } from '../src/game/economy';
+import { deckCard, deckCards, extraDemand, rollMarket, rollStock, rollTier, tierAt, tierPrice, tierWeights } from '../src/game/economy';
 import {
-  avgPaid, BASE_STARS, buy, buyBlock, canAct, CAPACITY, endDay, FIRST_QUOTA, guaranteedGood, newRun, offer, quotaFor, rescueGood, sell, sellBlock,
-  START_CASH, updateQuota,
+  avgPaid, BASE_STARS, buy, buyBlock, buyoutOffer, buyoutPrice, canAct, CAPACITY, endDay, FIRST_QUOTA, guaranteedGood, newRun, offer, quotaFor, rescueGood, sell, sellBlock, takeBuyout,
+  START_CASH, updateQuota, visit,
 } from '../src/game/run';
 import { type DealerDeal, type RunState, TIERS } from '../src/game/types';
 import { loadTestData } from './helpers';
@@ -72,7 +72,7 @@ describe('data', () => {
           ? { ...a, goods: a.goods.map((g) => ({ ...g, prices: { ...g.prices, good: g.prices.amazing, amazing: g.prices.good } })) }
           : a,
       );
-    expect(() => buildData(goods, flip('supplier'), locations, data.dealer)).toThrow(/bad -> good -> great -> amazing/);
+    expect(() => buildData(goods, flip('supplier'), locations, data.dealer)).toThrow(/good -> great -> amazing \(no bad\)/);
     expect(() => buildData(goods, flip('buyer'), locations, data.dealer)).toThrow(/bad -> good -> great -> amazing/);
   });
 });
@@ -126,6 +126,15 @@ describe('daily deal', () => {
           const dealt = dealActors(data, seed, day, locIds, good);
           const sigs = locIds.map((l) => sig(dealt[l]));
           expect(new Set(sigs).size).toBe(sigs.length);
+        }
+  });
+
+  it('with needSeller, gives every location a seller (even the Dealer location)', () => {
+    for (let seed = 0; seed < 200; seed++)
+      for (let day = 1; day <= 20; day++)
+        for (const dealerAt of [undefined, locIds[seed % locIds.length]]) {
+          const dealt = dealActors(data, seed, day, locIds, undefined, dealerAt, true);
+          for (const locId of locIds) expect(dealt[locId].some((id) => data.actors[id].role === 'supplier')).toBe(true);
         }
   });
 
@@ -250,7 +259,7 @@ describe('deal tiers', () => {
     const counts = { bad: 0, good: 0, great: 0, amazing: 0 };
     const n = 20000;
     for (let i = 0; i < n; i++) counts[rollTier(r)]++;
-    for (const t of TIERS) expect(counts[t] / n).toBeCloseTo(CONFIG.dealWeights[t], 1);
+    for (const t of TIERS) expect(counts[t] / n).toBeCloseTo(CONFIG.dealWeights[t] ?? 0, 1);
   });
 
   it('roll buyers roughly in proportion to CONFIG.buyerDealWeights', () => {
@@ -261,11 +270,12 @@ describe('deal tiers', () => {
     for (const t of TIERS) expect(counts[t] / n).toBeCloseTo(CONFIG.buyerDealWeights[t], 1);
   });
 
-  it('never roll a bad deal for a seller, and price a bad buyer at the great seller price', () => {
-    expect(CONFIG.dealWeights.bad).toBe(0);
+  it('never roll a bad deal for a seller, and price a bad buyer at or below the great seller price', () => {
+    expect(CONFIG.dealWeights.bad ?? 0).toBe(0);
     for (const good of Object.keys(data.goods)) {
       const of = (role: string) => Object.values(data.actors).filter((a) => a.role === role).flatMap((a) => a.goods.filter((g) => g.good === good));
-      for (const b of of('buyer')) for (const s of of('supplier')) expect(b.prices.bad).toBe(s.prices.great);
+      for (const s of of('supplier')) expect(s.prices.bad).toBeUndefined();
+      for (const b of of('buyer')) for (const s of of('supplier')) expect(b.prices.bad).toBeLessThanOrEqual(s.prices.great);
     }
   });
 
@@ -283,7 +293,7 @@ describe('deal tiers', () => {
         for (const id of l.actorIds)
           for (const ag of data.actors[id].goods) {
             const o = offer(s, id, ag.good);
-            expect(o.price).toBe(ag.prices[o.tier]);
+            expect(o.price).toBe(tierPrice(ag.prices, o.tier));
             const seller = data.actors[id].role === 'supplier';
             expect(o.left).toBeGreaterThanOrEqual(seller ? 1 : ag.qtyMin);
             expect(o.left).toBeLessThanOrEqual(seller ? 3 : ag.qtyMax);
@@ -448,6 +458,36 @@ describe('quota', () => {
     for (let d = 1; d < 7; d++) endDay(data, s);
     expect(endDay(data, s)).toBe('failed');
     expect(s.status).toBe('failed');
+  });
+
+  it('offers to buy the bag at Bad-deal prices only on an unmet due day', () => {
+    const s = newRun(data, 12);
+    s.inventory = [{ good: 'tools', paid: 10, day: 1 }, { good: 'strawberry', paid: 3, day: 1 }];
+    s.cash = 0;
+    expect(buyoutOffer(data, s)).toBeNull(); // not the due day yet
+    for (let d = 1; d < 7; d++) endDay(data, s);
+    s.inventory = [{ good: 'tools', paid: 10, day: 1 }, { good: 'strawberry', paid: 3, day: 1 }];
+    s.cash = FIRST_QUOTA - buyoutPrice(data, 'tools') - buyoutPrice(data, 'strawberry');
+    expect(buyoutPrice(data, 'tools')).toBe(8);
+    expect(buyoutOffer(data, s)).toBe(10);
+    expect(takeBuyout(data, s)).toBe(10);
+    expect(s.inventory).toEqual([]);
+    expect(s.cash).toBe(FIRST_QUOTA);
+    expect(s.quota.met).toBe(true);
+    expect(buyoutOffer(data, s)).toBeNull();
+    expect(endDay(data, s)).toBe('quotaPassed');
+  });
+
+  it('makes no buyout offer with an empty bag or a met quota', () => {
+    const s = newRun(data, 12);
+    for (let d = 1; d < 7; d++) endDay(data, s);
+    s.inventory = [];
+    s.cash = 0;
+    expect(buyoutOffer(data, s)).toBeNull();
+    expect(takeBuyout(data, s)).toBe(0);
+    s.inventory = [{ good: 'seashell', paid: 4, day: 1 }];
+    s.cash = FIRST_QUOTA;
+    expect(buyoutOffer(data, s)).toBeNull();
   });
 
   it('new day resets the visit and rerolls the market', () => {
@@ -616,7 +656,7 @@ describe('dealer', () => {
   });
 
   it('blocks buying without enough stars, and sells each offer only once', () => {
-    const s = withDealer(1, [{ kind: 'bag', tier: 1 }, { kind: 'sellChance', good: 'tools' }], 2);
+    const s = withDealer(1, [{ kind: 'bag', tier: 1 }, { kind: 'luck', good: 'tools' }], 2);
     expect(dealerBlock(s, 0)).toBe('noStars');
     expect(buyDealerDeal(data, s, 0)).toBe(false);
     s.stars = 7;
@@ -627,7 +667,7 @@ describe('dealer', () => {
     expect(s.stars).toBe(4);
     // the other offer is still for sale
     expect(buyDealerDeal(data, s, 1)).toBe(true);
-    expect(s.stars).toBe(4 - CONFIG.dealer.cost.sellChance);
+    expect(s.stars).toBe(4 - CONFIG.dealer.cost.luck);
     expect(dealerBlock(s, 5)).toBe('sold');
   });
 
@@ -672,7 +712,7 @@ describe('dealer', () => {
           for (const ag of data.actors[id].goods)
             if (ag.good === 'tools' && data.actors[id].role === 'supplier') {
               const o = offer(s, id, 'tools');
-              expect(o.price).toBe(Math.max(1, ag.prices[o.tier] - data.goods.tools.dealerDiscount));
+              expect(o.price).toBe(Math.max(1, tierPrice(ag.prices, o.tier) - data.goods.tools.dealerDiscount));
             }
     }
   });
@@ -724,7 +764,7 @@ describe('dealer', () => {
       [
         { kind: 'stockAll', tier: 2 },
         { kind: 'buyerStockAll', tier: 1 },
-        { kind: 'sellChanceAll', tier: 1 },
+        { kind: 'luckAll', tier: 1 },
       ].filter((d) => dealEnabled(d as DealerDeal)),
     );
   });
@@ -759,7 +799,7 @@ describe('dealer', () => {
     const s = newRun(data, 11);
     const berry = withActor(s, 'supplier', 'strawberry');
     const was = offer(s, berry, 'strawberry').left;
-    for (const kind of ['stockAll', 'buyerStockAll', 'sellChanceAll'] as const) {
+    for (const kind of ['stockAll', 'buyerStockAll', 'luckAll'] as const) {
       for (let tier = 1; tier <= CONFIG.dealer.ranks[kind]; tier++) {
         const next = eligibleDeals(data, s).filter((d) => d.kind === kind);
         expect(next).toEqual([{ kind, tier }]);
@@ -772,7 +812,7 @@ describe('dealer', () => {
     expect(s.perks.stockAll).toBe(ranks.stockAll * CONFIG.dealer.stockAll);
     expect(offer(s, berry, 'strawberry').left).toBe(was + ranks.stockAll * CONFIG.dealer.stockAll);
     expect(s.perks.buyerStockAll).toBe(ranks.buyerStockAll * CONFIG.dealer.buyerStockAll);
-    expect(s.perks.sellChanceAll).toBeCloseTo(ranks.sellChanceAll * CONFIG.dealer.sellChanceAll);
+    expect(s.perks.luckAll).toBeCloseTo(ranks.luckAll * CONFIG.dealer.luckAll);
     CONFIG.dealer.disabled = saved;
   });
 
@@ -804,7 +844,7 @@ describe('dealer', () => {
   it('brings a cheap deal on his first visit after each met quota', () => {
     const saved = CONFIG.dealer.weight;
     // make the pricey all-goods deals overwhelmingly likely, so the guarantee has to do the work
-    CONFIG.dealer.weight = { discountAll: 1000, stockAll: 1000, buyerStockAll: 1000, sellChanceAll: 1000 };
+    CONFIG.dealer.weight = { discountAll: 1000, stockAll: 1000, buyerStockAll: 1000, luckAll: 1000 };
     try {
       for (let seed = 0; seed < 60; seed++) {
         const s = newRun(data, seed);
@@ -839,41 +879,70 @@ describe('dealer', () => {
     expect(rollDealer(data, s)).toBeNull();
   });
 
-  it("better buyers shifts that good's buyer tiers towards great/amazing, not other goods or sellers", () => {
-    const s = withDealer(4, [{ kind: 'sellChance', good: 'seashell' }]);
+  it("luck shifts that good's seller and buyer tiers towards great/amazing, not other goods", () => {
+    const s = withDealer(4, [{ kind: 'luck', good: 'seashell' }]);
+    s.quota = quotaFor(1); // past the first quota's gentler buyers
     buyDealerDeal(data, s, 0);
-    const step = CONFIG.dealer.sellChanceStep;
-    const base = CONFIG.buyerDealWeights;
-    const w = buyerWeights(s, 'seashell');
-    expect(w.bad).toBeCloseTo(base.bad - 2 * step);
-    expect(w.good).toBeCloseTo(base.good);
-    expect(w.great).toBeCloseTo(base.great + step);
-    expect(w.amazing).toBeCloseTo(base.amazing + step);
-    expect(buyerWeights(s, 'tools')).toEqual(base);
-    expect(eligibleDeals(data, s)).not.toContainEqual({ kind: 'sellChance', good: 'seashell' });
-    expect(eligibleDeals(data, s)).toContainEqual({ kind: 'sellChance', good: 'tools' });
-    const counts = { shellBuyer: { good: 0, n: 0 }, otherBuyer: { good: 0, n: 0 }, supplier: { good: 0, n: 0 } };
+    const step = CONFIG.dealer.luckStep;
+    const buyer = CONFIG.buyerDealWeights;
+    const seller = CONFIG.dealWeights;
+    // buyers: bad pays for both
+    const w = tierWeights(s, 'seashell', 'buyer');
+    expect(w.bad).toBeCloseTo(buyer.bad - 2 * step);
+    expect(w.good).toBeCloseTo(buyer.good);
+    expect(w.great).toBeCloseTo(buyer.great + step);
+    expect(w.amazing).toBeCloseTo(buyer.amazing + step);
+    // sellers have no bad, so good pays
+    const sw = tierWeights(s, 'seashell', 'supplier');
+    expect(sw.bad).toBeUndefined();
+    expect(sw.good).toBeCloseTo(seller.good! - 2 * step);
+    expect(sw.great).toBeCloseTo(seller.great! + step);
+    expect(sw.amazing).toBeCloseTo(seller.amazing! + step);
+    expect(tierWeights(s, 'tools', 'buyer')).toEqual(buyer);
+    expect(tierWeights(s, 'tools', 'supplier')).toEqual(seller);
+    expect(eligibleDeals(data, s)).not.toContainEqual({ kind: 'luck', good: 'seashell' });
+    expect(eligibleDeals(data, s)).toContainEqual({ kind: 'luck', good: 'tools' });
+    const counts = { shellBuyer: { bad: 0, n: 0 }, otherBuyer: { bad: 0, n: 0 }, shellSeller: { good: 0, n: 0 }, otherSeller: { good: 0, n: 0 } };
     for (let d = 0; d < 400; d++) {
       s.quota.dueDay = 9999; // keep the run alive
+      visit(data, s, s.locations[0].id); // use up the tier deck cards, as a player would
       endDay(data, s);
       for (const l of s.locations)
         for (const id of l.actorIds)
           for (const ag of data.actors[id].goods) {
-            const role = data.actors[id].role;
-            const c = role === 'supplier' ? counts.supplier : ag.good === 'seashell' ? counts.shellBuyer : counts.otherBuyer;
-            c.n++;
-            c.good += +(offer(s, id, ag.good).tier === 'good');
+            const tier = offer(s, id, ag.good).tier;
+            const shell = ag.good === 'seashell';
+            if (data.actors[id].role === 'supplier') {
+              const c = shell ? counts.shellSeller : counts.otherSeller;
+              c.n++;
+              c.good += +(tier === 'good');
+            } else {
+              const c = shell ? counts.shellBuyer : counts.otherBuyer;
+              c.n++;
+              c.bad += +(tier === 'bad');
+            }
           }
     }
-    expect(counts.shellBuyer.good / counts.shellBuyer.n).toBeCloseTo(w.good, 1);
-    expect(counts.otherBuyer.good / counts.otherBuyer.n).toBeCloseTo(base.good, 1);
-    expect(counts.supplier.good / counts.supplier.n).toBeCloseTo(CONFIG.dealWeights.good, 1);
+    expect(counts.shellBuyer.bad / counts.shellBuyer.n).toBeCloseTo(w.bad!, 1);
+    expect(counts.otherBuyer.bad / counts.otherBuyer.n).toBeCloseTo(buyer.bad, 1);
+    expect(counts.shellSeller.good / counts.shellSeller.n).toBeCloseTo(sw.good!, 1);
+    expect(counts.otherSeller.good / counts.otherSeller.n).toBeCloseTo(seller.good!, 1);
   });
 
-  it('all-goods better buyers is at least as strong, hits every good, and stacks with the per-good one', () => {
-    const s = withDealer(5, [{ kind: 'sellChance', good: 'tools' }, { kind: 'sellChanceAll', tier: 1 }]);
-    s.dealer!.offers.forEach((_, i) => buyDealerDeal(data, s, i));
-    const { sellChanceStep: step, sellChanceAll: all } = CONFIG.dealer;
+  it('keeps bad buyers until the second rank of all-goods luck', () => {
+    const s = newRun(data, 1);
+    s.quota = quotaFor(1);
+    s.perks.luckAll = CONFIG.dealer.luckAll;
+    expect(tierWeights(s, 'tools', 'buyer').bad).toBeGreaterThan(0);
+    s.perks.luckAll = 2 * CONFIG.dealer.luckAll;
+    expect(tierWeights(s, 'tools', 'buyer').bad).toBeCloseTo(0);
+  });
+
+  it('all-goods luck is at least as strong, hits every good, and stacks with the per-good one', () => {
+    const s = withDealer(5, [{ kind: 'luck', good: 'tools' }, { kind: 'luckAll', tier: 1 }], 20);
+    s.quota = quotaFor(1);
+    s.dealer!.offers.forEach((_, i) => expect(buyDealerDeal(data, s, i)).toBe(true));
+    const { luckStep: step, luckAll: all } = CONFIG.dealer;
     expect(all).toBeGreaterThanOrEqual(step);
     const base = CONFIG.buyerDealWeights;
     // bad pays first, then good
@@ -881,18 +950,23 @@ describe('dealer', () => {
       const bad = Math.max(0, base.bad - 2 * s);
       return { bad, good: base.good - (2 * s - (base.bad - bad)) };
     };
-    expect(buyerWeights(s, 'tools').great).toBeCloseTo(base.great + step + all);
-    expect(buyerWeights(s, 'tools').bad).toBeCloseTo(after(step + all).bad);
-    expect(buyerWeights(s, 'tools').good).toBeCloseTo(after(step + all).good);
+    const bw = (good: string) => tierWeights(s, good, 'buyer');
+    expect(bw('tools').great).toBeCloseTo(base.great + step + all);
+    expect(bw('tools').bad).toBeCloseTo(after(step + all).bad);
+    expect(bw('tools').good).toBeCloseTo(after(step + all).good);
+    expect(tierWeights(s, 'tools', 'supplier').good).toBeCloseTo(CONFIG.dealWeights.good! - 2 * (step + all));
     for (const good of ['strawberry', 'seashell', 'old_record']) {
-      expect(buyerWeights(s, good).amazing).toBeCloseTo(base.amazing + all);
-      expect(buyerWeights(s, good).bad).toBeCloseTo(after(all).bad);
-      expect(buyerWeights(s, good).good).toBeCloseTo(after(all).good);
+      expect(bw(good).amazing).toBeCloseTo(base.amazing + all);
+      expect(bw(good).bad).toBeCloseTo(after(all).bad);
+      expect(bw(good).good).toBeCloseTo(after(all).good);
+      expect(tierWeights(s, good, 'supplier').amazing).toBeCloseTo(CONFIG.dealWeights.amazing! + all);
     }
-    // every good's buyers, both perks at once, still leave some chance of a plain good deal
+    // every rank plus the per-good one still leaves some chance of a plain good deal on both sides
+    s.perks.luckAll = CONFIG.dealer.ranks.luckAll * all;
     for (const good of Object.keys(data.goods)) {
-      s.perks.sellChance[good] = step;
-      expect(buyerWeights(s, good).good).toBeGreaterThan(0);
+      s.perks.luck[good] = step;
+      expect(bw(good).good).toBeGreaterThan(0);
+      expect(tierWeights(s, good, 'supplier').good).toBeGreaterThan(0);
     }
   });
 });
@@ -953,5 +1027,102 @@ describe('canAct', () => {
     expect(canAct(data, s, loc)).toBe(true);
     s.stars = 2;
     expect(canAct(data, s, loc)).toBe(false);
+  });
+});
+
+describe('tier deck', () => {
+  const cycle = (seed: number, role: 'supplier' | 'buyer', quota: number, c: number, weights: Partial<Record<(typeof TIERS)[number], number>>) => {
+    const counts: Record<string, number> = { bad: 0, good: 0, great: 0, amazing: 0 };
+    for (let i = 0; i < CONFIG.deckSize; i++) counts[tierAt(deckCard(seed, role, quota, c * CONFIG.deckSize + i), weights)]++;
+    return counts;
+  };
+
+  it('deals every cycle to the tier weights: whole cards exactly, the rest split between neighbours', () => {
+    expect(CONFIG.deckSize).toBe(10);
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const [q, c] of [[0, 0], [0, 1], [3, 2]]) {
+        const w1 = cycle(seed, 'buyer', q, c, CONFIG.firstQuotaBuyerDealWeights); // 1 / 5 / 2.5 / 1.5
+        expect(w1.bad).toBe(1);
+        expect(w1.good).toBe(5);
+        expect([2, 3]).toContain(w1.great);
+        expect(w1.great + w1.amazing).toBe(4);
+        const later = cycle(seed, 'buyer', q, c, CONFIG.buyerDealWeights); // 2 / 4 / 2.5 / 1.5
+        expect(later.bad).toBe(2);
+        expect(later.good).toBe(4);
+        expect(later.great + later.amazing).toBe(4);
+        expect(cycle(seed, 'supplier', q, c, CONFIG.dealWeights)).toEqual({ bad: 0, good: 5, great: 3, amazing: 2 });
+      }
+    }
+  });
+
+  it('is right on average for weights that split a card', () => {
+    let great = 0;
+    for (let seed = 1; seed <= 400; seed++) great += cycle(seed, 'buyer', 0, 0, CONFIG.buyerDealWeights).great;
+    expect(great / 400).toBeCloseTo(2.5, 0);
+  });
+
+  it('shuffles each cycle and each quota differently', () => {
+    const order = (q: number, c: number) => Array.from({ length: CONFIG.deckSize }, (_, i) => deckCard(7, 'buyer', q, c * CONFIG.deckSize + i));
+    expect(order(0, 0)).not.toEqual(order(0, 1));
+    expect(order(0, 0)).not.toEqual(order(1, 0));
+    expect(order(0, 0)).toEqual(order(0, 0));
+  });
+
+  it('gives the first quota half the bad buyers, then the normal weights', () => {
+    const s = newRun(data, 1);
+    expect(tierWeights(s, 'tools', 'buyer')).toEqual(CONFIG.firstQuotaBuyerDealWeights);
+    expect(tierWeights(s, 'tools', 'supplier')).toEqual(CONFIG.dealWeights);
+    s.quota = quotaFor(1);
+    expect(tierWeights(s, 'tools', 'buyer')).toEqual(CONFIG.buyerDealWeights);
+  });
+
+  it('only the visited location uses up cards, and it gets the next ones in order', () => {
+    const s = newRun(data, 21);
+    const loc = s.locations[0];
+    const before = { ...s.deck };
+    // every location reads from the same deck position
+    for (const l of s.locations) {
+      const next = { ...s.deck };
+      for (const id of l.actorIds) {
+        const a = data.actors[id];
+        for (const ag of a.goods) {
+          const u = deckCard(s.seed, a.role, s.quota.index, next[a.role]++);
+          expect(offer(s, id, ag.good).tier).toBe(tierAt(u, tierWeights(s, ag.good, a.role)));
+        }
+      }
+    }
+    visit(data, s, loc.id);
+    const used = deckCards(data, s, loc.id);
+    expect(used.supplier + used.buyer).toBeGreaterThan(0);
+    expect(s.deck).toEqual({ supplier: before.supplier + used.supplier, buyer: before.buyer + used.buyer });
+    visit(data, s, s.locations[1].id); // already committed today: no change
+    expect(s.deck).toEqual({ supplier: before.supplier + used.supplier, buyer: before.buyer + used.buyer });
+    endDay(data, s);
+    expect(s.deck).toEqual({ supplier: before.supplier + used.supplier, buyer: before.buyer + used.buyer });
+  });
+
+  it('starts a fresh deck when a quota is passed', () => {
+    const s = newRun(data, 22);
+    while (s.day < s.quota.dueDay) {
+      visit(data, s, s.locations[0].id);
+      endDay(data, s);
+    }
+    expect(s.deck.supplier + s.deck.buyer).toBeGreaterThan(0);
+    s.cash = s.quota.amount;
+    expect(endDay(data, s)).toBe('quotaPassed');
+    expect(s.deck).toEqual({ supplier: 0, buyer: 0 });
+  });
+
+  it('rolls independently when switched off', () => {
+    const saved = CONFIG.tierDeck;
+    try {
+      CONFIG.tierDeck = false;
+      const a = newRun(data, 30);
+      const b = newRun(data, 30);
+      b.deck = { supplier: 7, buyer: 3 };
+      expect(rollMarket(data, b)).toEqual(rollMarket(data, a));
+    } finally {
+      CONFIG.tierDeck = saved;
+    }
   });
 });

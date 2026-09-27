@@ -18,13 +18,17 @@ export function buildData(
     for (const g of a.goods) {
       if (!data.goods[g.good]) errors.push(`actor ${a.id}: unknown good ${g.good}`);
       // Better deals are better for the player: sellers get cheaper, buyers pay more.
+      // Only buyers have a bad tier.
       const { bad, good, great, amazing } = g.prices;
       const ordered =
         a.role === 'supplier'
-          ? bad > good && good > great && great > amazing
-          : bad < good && good < great && great < amazing;
-      if (!ordered) errors.push(`actor ${a.id}/${g.good}: prices must improve from bad -> good -> great -> amazing`);
-      if (amazing < 1 || bad < 1) errors.push(`actor ${a.id}/${g.good}: prices must be >= 1`);
+          ? bad === undefined && good > great && great > amazing
+          : bad !== undefined && bad < good && good < great && great < amazing;
+      if (!ordered) {
+        const tiers = a.role === 'supplier' ? 'good -> great -> amazing (no bad)' : 'bad -> good -> great -> amazing';
+        errors.push(`actor ${a.id}/${g.good}: prices must improve from ${tiers}`);
+      }
+      if (Math.min(bad ?? good, good, great, amazing) < 1) errors.push(`actor ${a.id}/${g.good}: prices must be >= 1`);
       if (g.qtyMin > g.qtyMax || g.qtyMin < 0) errors.push(`actor ${a.id}/${g.good}: bad qty range`);
     }
   }

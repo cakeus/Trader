@@ -9,14 +9,24 @@ export const CONFIG = {
   /** Clicking an actor trades directly (shift = max) instead of opening the trade dialog. */
   quickTrade: true,
   /** Chance of each deal tier being rolled for a seller's good on a given day (sums to 1). */
-  dealWeights: { bad: 0, good: 0.5, great: 0.3, amazing: 0.2 } as Record<Tier, number>,
-  /** The same for a buyer's good. A bad buyer pays the good's great seller price, so selling to one
-   *  only breaks even on a great buy and profits on an amazing one. */
+  dealWeights: { good: 0.5, great: 0.3, amazing: 0.2 } as Partial<Record<Tier, number>>,
+  /** The same for a buyer's good. A bad buyer pays $1 under the good's great seller price
+   *  (strawberry: the great seller price), so selling to one loses unless you bought at amazing. */
   buyerDealWeights: { bad: 0.2, good: 0.4, great: 0.25, amazing: 0.15 } as Record<Tier, number>,
+  /** Buyer weights during the first quota (days 1–7): half the bad buyers, the rest turned good. */
+  firstQuotaBuyerDealWeights: { bad: 0.1, good: 0.5, great: 0.25, amazing: 0.15 } as Record<Tier, number>,
+  /** Deal tiers are dealt from a shuffled deck per role (seller / buyer) instead of rolled
+   *  independently, so each cycle of `deckSize` cards follows the tier weights closely. Only the
+   *  location you visit uses up cards, so every card dealt is one you see. Each quota starts a
+   *  fresh deck, so luck in one quota isn't paid back in the next. */
+  tierDeck: true,
+  /** Cards per deck cycle: about one quota's worth for each role. At 10, a 10% weight is exactly
+   *  one card per cycle; a 25% weight comes out as 2 or 3. */
+  deckSize: 10,
   /** Chance of each base daily stock for a seller's good (stock deals add on top). */
   stockWeights: { 1: 0.5, 2: 0.3, 3: 0.2 } as Record<number, number>,
   /** Each quota is this many times the previous one (2 = doubling), rounded to $5. */
-  quotaGrowth: 1.6,
+  quotaGrowth: 1.75,
   /** The star Dealer. */
   dealer: {
     /** Chance he shows up on a given day, after his guaranteed first visit. */
@@ -30,18 +40,19 @@ export const CONFIG = {
     /** Star cost per deal kind, the same for every rank (bag deals use bagCosts). Every deal can be
      *  bought once per run. */
     cost: {
-      bag: 3, discount: 3, sellChance: 3, stock: 3, buyerStock: 3,
-      discountAll: 6, stockAll: 6, buyerStockAll: 6, sellChanceAll: 6,
+      bag: 3, discount: 3, luck: 3, stock: 3, buyerStock: 3,
+      discountAll: 6, stockAll: 6, buyerStockAll: 6, luckAll: 8,
     } as Record<DealerDeal['kind'], number>,
     /** Star cost of bag upgrades I, II, III; each unlocks after the one before. */
     bagCosts: [3, 4, 5],
     /** How many ranks the ranked deals have; only the next rank is ever offered. */
-    ranks: { bag: 3, stockAll: 3, buyerStockAll: 3, sellChanceAll: 3 } as Record<RankedKind, number>,
+    ranks: { bag: 3, stockAll: 3, buyerStockAll: 3, luckAll: 3 } as Record<RankedKind, number>,
     /** Relative chance of each deal kind being picked for an offer slot (default 1). The good (or the
      *  next rank) is then picked evenly within the kind. */
     weight: {} as Partial<Record<DealerDeal['kind'], number>>,
-    /** sellChance adds this to buyers' great and amazing weights for its good (taking both from bad, then good). */
-    sellChanceStep: 0.1,
+    /** A luck deal adds this to the great and amazing weights of every seller and buyer of its good
+     *  (taking both from bad, then good). */
+    luckStep: 0.05,
     /** A stock deal adds this to the daily stock of every seller of its good. */
     stockStep: 2,
     /** A buyerStock deal adds this to the daily demand of every buyer of its good. */
@@ -51,8 +62,8 @@ export const CONFIG = {
     discountAll: 1,
     stockAll: 1,
     buyerStockAll: 1,
-    /** The all-goods better-buyers deal, per rank: added to every buyer's great and amazing weights.
-     *  Stacks with sellChance. */
-    sellChanceAll: 0.1,
+    /** The all-goods luck deal, per rank: added to every seller's and buyer's great and amazing
+     *  weights. Stacks with luck. */
+    luckAll: 0.05,
   },
 };

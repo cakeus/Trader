@@ -1,12 +1,12 @@
 import { rngFor } from '../engine/rng';
 import { CONFIG } from './config';
-import { offerKey, sellerPrice } from './economy';
-import type { DealerDeal, DealerVisit, GameData, GoodKind, RankedKind, Role, RunState } from './types';
+import { offerKey, sellerPrice, tierPrice } from './economy';
+import type { ActorGood, DealerDeal, DealerVisit, GameData, GoodKind, RankedKind, Role, RunState } from './types';
 
 export const BAG_TIERS = CONFIG.dealer.ranks.bag;
 
-const RANKED: RankedKind[] = ['bag', 'stockAll', 'buyerStockAll', 'sellChanceAll'];
-const PER_GOOD: GoodKind[] = ['discount', 'stock', 'buyerStock', 'sellChance'];
+const RANKED: RankedKind[] = ['bag', 'stockAll', 'buyerStockAll', 'luckAll'];
+const PER_GOOD: GoodKind[] = ['discount', 'stock', 'buyerStock', 'luck'];
 
 export function isRanked(deal: DealerDeal): deal is Extract<DealerDeal, { tier: number }> {
   return 'tier' in deal;
@@ -33,7 +33,7 @@ export function owns(state: RunState, deal: DealerDeal): boolean {
 
 /** The deals that affect every good (drawn as purple stamps). */
 export function isUniversal(deal: DealerDeal): boolean {
-  return deal.kind === 'discountAll' || deal.kind === 'stockAll' || deal.kind === 'buyerStockAll' || deal.kind === 'sellChanceAll';
+  return deal.kind === 'discountAll' || deal.kind === 'stockAll' || deal.kind === 'buyerStockAll' || deal.kind === 'luckAll';
 }
 
 export function dealCost(deal: DealerDeal): number {
@@ -54,7 +54,7 @@ export function allDeals(data: GameData): DealerDeal[] {
   all.push({ kind: 'discountAll' });
   ranks('stockAll');
   ranks('buyerStockAll');
-  ranks('sellChanceAll');
+  ranks('luckAll');
   return all;
 }
 
@@ -141,7 +141,7 @@ export function buyDealerDeal(data: GameData, state: RunState, index: number): b
       for (const good of deal.kind === 'discount' ? [deal.good] : allGoods)
         forTodays(data, state, 'supplier', good, (actorId, prices) => {
           const offer = state.market[offerKey(actorId, good)];
-          offer.price = sellerPrice(state, good, prices[offer.tier]);
+          offer.price = sellerPrice(state, good, tierPrice(prices, offer.tier));
         });
       break;
     }
@@ -169,11 +169,11 @@ export function buyDealerDeal(data: GameData, state: RunState, index: number): b
         });
       break;
     }
-    case 'sellChance':
-      perks.sellChance[deal.good] = (perks.sellChance[deal.good] ?? 0) + CONFIG.dealer.sellChanceStep;
+    case 'luck':
+      perks.luck[deal.good] = (perks.luck[deal.good] ?? 0) + CONFIG.dealer.luckStep;
       break;
-    case 'sellChanceAll':
-      perks.sellChanceAll += CONFIG.dealer.sellChanceAll;
+    case 'luckAll':
+      perks.luckAll += CONFIG.dealer.luckAll;
       break;
   }
   return true;
@@ -185,7 +185,7 @@ function forTodays(
   state: RunState,
   role: Role,
   good: string,
-  fn: (actorId: string, prices: Record<string, number>) => void,
+  fn: (actorId: string, prices: ActorGood['prices']) => void,
 ): void {
   for (const loc of state.locations)
     for (const actorId of loc.actorIds) {
@@ -216,18 +216,18 @@ export function describeDeal(data: GameData, deal: DealerDeal): { title: string;
       const g = data.goods[deal.good];
       return { title: `${g.name} Surplus`, body: `+${d.stockStep} ${g.name} for sale each day.` };
     }
-    case 'sellChance': {
-      const pct = Math.round(d.sellChanceStep * 100);
+    case 'luck': {
+      const pct = Math.round(d.luckStep * 100 * 2);
       const g = data.goods[deal.good];
-      return { title: `${g.name} Dealer`, body: `+${pct}% better deals when selling ${g.name}.` };
+      return { title: `${g.name} Dealer`, body: `+${pct}% more deals on ${g.name}.` };
     }
     case 'buyerStock': {
       const g = data.goods[deal.good];
       return { title: `${g.name} Demand`, body: `Buyers want ${d.buyerStockStep} more ${g.name} each day.` };
     }
-    case 'sellChanceAll': {
-      const pct = Math.round(d.sellChanceAll * 100);
-      return { title: `Deals, Deals, Everywhere ${ROMAN[deal.tier - 1]}`, body: `+${pct}% better deals on all goods.` };
+    case 'luckAll': {
+      const pct = Math.round(d.luckAll * 100 * 2);
+      return { title: `Deals, Deals, Everywhere ${ROMAN[deal.tier - 1]}`, body: `+${pct}% more deals on ALL goods.` };
     }
     case 'discountAll':
       return { title: `Clearance Sale`, body: `ALL sellers charge $${d.discountAll} less (min $1).` };

@@ -15,7 +15,7 @@ export function loadRun(): RunState | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as RunState;
-    if (s.version !== 8 || s.status !== 'active') return null;
+    if (s.version !== 10 || s.status !== 'active') return null;
     return s;
   } catch {
     return null;

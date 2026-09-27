@@ -28,7 +28,7 @@ export class MapScene implements Scene {
 
       if (hot) this.locationTooltip(ui, loc.id, loc.actorIds);
       if (ui.clicked(hit)) {
-        visit(run, loc.id);
+        visit(app.data, run, loc.id);
         app.save();
         app.sfx.play('open');
         app.goto(new LocationScene(app, loc.id));

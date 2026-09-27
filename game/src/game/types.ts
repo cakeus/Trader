@@ -17,11 +17,11 @@ export interface GoodDef {
 export type Tier = 'bad' | 'good' | 'great' | 'amazing';
 export const TIERS: Tier[] = ['bad', 'good', 'great', 'amazing'];
 
-/** One good an actor trades. Each day a tier is rolled and its price applies.
- *  qty = daily stock (suppliers) or daily demand (buyers). */
+/** One good an actor trades. Each day a tier is rolled and its price applies (only buyers have
+ *  a bad price). qty = daily stock (suppliers) or daily demand (buyers). */
 export interface ActorGood {
   good: string;
-  prices: Record<Tier, number>;
+  prices: Record<Exclude<Tier, 'bad'>, number> & { bad?: number };
   qtyMin: number;
   qtyMax: number;
 }
@@ -113,9 +113,9 @@ export interface BagItem {
 }
 
 /** Deal kinds bought in ranks (I, II, III...); each rank needs the one before. */
-export type RankedKind = 'bag' | 'stockAll' | 'buyerStockAll' | 'sellChanceAll';
+export type RankedKind = 'bag' | 'stockAll' | 'buyerStockAll' | 'luckAll';
 /** Deal kinds that come once per good. */
-export type GoodKind = 'discount' | 'stock' | 'buyerStock' | 'sellChance';
+export type GoodKind = 'discount' | 'stock' | 'buyerStock' | 'luck';
 
 /** One upgrade (stamp) the Dealer can sell. */
 export type DealerDeal =
@@ -141,8 +141,8 @@ export interface DealerVisit {
 export interface Perks {
   /** Dollars off seller prices, per good. */
   discounts: Record<string, number>;
-  /** Added to buyers' great and amazing weights (and taken twice from good), per good. */
-  sellChance: Record<string, number>;
+  /** Added to sellers' and buyers' great and amazing weights (taken twice from bad, then good), per good. */
+  luck: Record<string, number>;
   /** Extra daily stock for every seller, per good. */
   stock: Record<string, number>;
   /** Extra daily demand for every buyer, per good. */
@@ -152,14 +152,14 @@ export interface Perks {
   discountAll: number;
   stockAll: number;
   buyerStockAll: number;
-  /** Added to every buyer's great and amazing weights (the all-goods better-buyers deal). */
-  sellChanceAll: number;
+  /** Added to every seller's and buyer's great and amazing weights (the all-goods luck deal). */
+  luckAll: number;
   /** Keys (`dealKey`) of every deal bought this run; each deal can be bought only once. */
   owned: string[];
 }
 
 export interface RunState {
-  version: 8;
+  version: 10;
   seed: number;
   day: number;
   cash: number;
@@ -172,6 +172,8 @@ export interface RunState {
   visited: string | null;
   /** Today's offers keyed by `${actorId}:${goodId}`. */
   market: Record<string, Offer>;
+  /** Tier deck cards used so far this quota, per role (CONFIG.tierDeck); the decks come from the seed. */
+  deck: Record<Role, number>;
   stats: RunStats;
   /** Unspent stars. */
   stars: number;
