@@ -22,7 +22,7 @@ export class TradeDialog implements Scene {
   frame(ui: Ui): void {
     const { app, actorId } = this;
     const run = app.run!;
-    const actor = app.data.actors[actorId];
+    const actor = app.view.actors[actorId];
     const selling = actor.role === 'supplier';
     ui.dim(0.45);
 
@@ -111,7 +111,7 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string): void
 /** Click-the-actor trading: pick the good to trade (buyers prefer one you actually hold). */
 export function quickTrade(app: App, ui: Ui, actorId: string): void {
   const run = app.run!;
-  const actor = app.data.actors[actorId];
+  const actor = app.view.actors[actorId];
   const goods = actor.goods.map((g) => g.good);
   const good =
     actor.role === 'buyer' ? (goods.find((g) => sellBlock(run, actorId, g) === null) ?? goods[0]) : goods[0];

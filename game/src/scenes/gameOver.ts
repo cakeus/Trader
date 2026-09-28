@@ -11,7 +11,7 @@ export class GameOver implements Scene {
 
   frame(ui: Ui): void {
     const { run } = this;
-    drawBackground(ui, 'assets/bg/map.png');
+    drawBackground(ui, this.app.data.areas[run.area]?.map ?? 'assets/bg/map.png');
     ui.dim(0.7);
     const w = 380;
     const h = 220;

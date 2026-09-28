@@ -9,8 +9,31 @@ export interface GoodDef {
   /** 16x16 icon for the map tooltip. */
   iconMedium: string;
   blurb: string;
+  /** Its category (`categories.json`): stamps apply per category, so they carry across areas. */
+  category: string;
+  /** The area it's traded in (`areas.json`). */
+  area: string;
   /** Dollars off this good's seller prices once the Dealer's discount is bought. */
   dealerDiscount: number;
+}
+
+/** A kind of good with one good in every area (Food: Strawberry, Hot Cocoa). */
+export interface CategoryDef {
+  id: string;
+  name: string;
+}
+
+/** A region with its own map, locations and goods. The run moves on to the next one on `fromDay`. */
+export interface AreaDef {
+  id: string;
+  name: string;
+  blurb: string;
+  map: string;
+  /** Background music, looped while the run is here (the first area's also plays on the title screen). */
+  music: string;
+  fromDay: number;
+  /** Animated weather drawn over the map. */
+  weather?: 'snow';
 }
 
 /** Deal tier rolled per actor/good each day. */
@@ -26,6 +49,7 @@ export interface ActorGood {
   qtyMax: number;
 }
 
+/** An actor trades one good (`goods` has one entry), so it belongs to that good's area. */
 export interface ActorDef {
   id: string;
   name: string;
@@ -43,6 +67,7 @@ export interface Point {
 export interface LocationDef {
   id: string;
   name: string;
+  area: string;
   blurb: string;
   background: string;
   mapPos: Point;
@@ -50,7 +75,6 @@ export interface LocationDef {
   actorSlots: number;
   /** Screen positions (top-left of the actor card) for each slot. */
   slots: Point[];
-  /** Screen position (top-left of the card) for the Dealer when he visits. */
   /** Where the Dealer stood when he was a 4th card; only used for days saved before he took an actor's spot. */
   dealerSlot: Point;
 }
@@ -68,6 +92,8 @@ export interface GameData {
   actors: Record<string, ActorDef>;
   locations: Record<string, LocationDef>;
   dealer: DealerDef;
+  categories: Record<string, CategoryDef>;
+  areas: Record<string, AreaDef>;
 }
 
 /** Today's terms for one actor + good. */
@@ -114,13 +140,13 @@ export interface BagItem {
 
 /** Deal kinds bought in ranks (I, II, III...); each rank needs the one before. */
 export type RankedKind = 'bag' | 'stockAll' | 'buyerStockAll' | 'luckAll';
-/** Deal kinds that come once per good. */
-export type GoodKind = 'discount' | 'stock' | 'buyerStock' | 'luck';
+/** Deal kinds that come once per category (they apply to that category's good in every area). */
+export type CategoryKind = 'discount' | 'stock' | 'buyerStock' | 'luck';
 
 /** One upgrade (stamp) the Dealer can sell. */
 export type DealerDeal =
   | { kind: RankedKind; tier: number }
-  | { kind: GoodKind; good: string }
+  | { kind: CategoryKind; category: string }
   | { kind: 'discountAll' };
 
 /** One of the Dealer's offers today. */
@@ -139,13 +165,13 @@ export interface DealerVisit {
 
 /** Permanent upgrades bought from the Dealer this run. */
 export interface Perks {
-  /** Dollars off seller prices, per good. */
+  /** Per category: 1 once its discount is bought (sellers take each good's `dealerDiscount` off). */
   discounts: Record<string, number>;
-  /** Added to sellers' and buyers' great and amazing weights (taken twice from bad, then good), per good. */
+  /** Added to sellers' and buyers' great and amazing weights (taken twice from bad, then good), per category. */
   luck: Record<string, number>;
-  /** Extra daily stock for every seller, per good. */
+  /** Extra daily stock for every seller, per category. */
   stock: Record<string, number>;
-  /** Extra daily demand for every buyer, per good. */
+  /** Extra daily demand for every buyer, per category. */
   buyerStock: Record<string, number>;
   /** Dollars off every seller price, extra daily stock for every seller, and extra daily demand
    *  for every buyer (the all-goods deals). */
@@ -158,9 +184,21 @@ export interface Perks {
   owned: string[];
 }
 
+/** The move to a new area, shown on the arrival screen until dismissed. */
+export interface AreaMove {
+  area: string;
+  /** Units left in the bag, bought back at what was paid for them. */
+  units: number;
+  refund: number;
+}
+
 export interface RunState {
-  version: 10;
+  version: 12;
   seed: number;
+  /** The area the run is in (`areas.json`). */
+  area: string;
+  /** Set when the run moves to a new area, until the arrival screen is dismissed. */
+  moved?: AreaMove | null;
   day: number;
   cash: number;
   capacity: number;

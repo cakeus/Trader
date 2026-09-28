@@ -1,4 +1,5 @@
 import { rngFor } from '../engine/rng';
+import { areaFor, areaView } from './area';
 import { CONFIG } from './config';
 import { dealActors } from './deal';
 import { dealerBlock, rollDealer } from './dealer';
@@ -25,15 +26,24 @@ export function quotaFor(index: number): Quota {
   };
 }
 
-export function newRun(data: GameData, seed: number): RunState {
-  const r = rngFor(seed, 'setup');
-  const locations = r
-    .shuffle(Object.keys(data.locations))
+/** The run's locations in an area: RUN_LOCATIONS of them, shuffled by the seed. The first area
+ *  keeps the seed's original shuffle. */
+function pickLocations(data: GameData, seed: number, area: string, first: boolean) {
+  const r = first ? rngFor(seed, 'setup') : rngFor(seed, 'setup', area);
+  return r
+    .shuffle(Object.keys(areaView(data, area).locations))
     .slice(0, RUN_LOCATIONS)
     .map((id) => ({ id, actorIds: [] as string[] }));
+}
+
+export function newRun(data: GameData, seed: number): RunState {
+  const area = areaFor(data, 1);
+  const locations = pickLocations(data, seed, area, true);
   const state: RunState = {
-    version: 10,
+    version: 12,
     seed,
+    area,
+    moved: null,
     day: 1,
     cash: START_CASH,
     capacity: CAPACITY,
@@ -64,6 +74,7 @@ export function newRun(data: GameData, seed: number): RunState {
  *  On other days, if the player can't buy anything, a buyer of something in the bag is (see rescueGood).
  *  With an empty bag, no location has only buyers. */
 function startDay(data: GameData, state: RunState): void {
+  data = areaView(data, state.area);
   state.dealer = rollDealer(data, state);
   const ids = state.locations.map((l) => l.id);
   const dealerAt = state.dealer?.locationId;
@@ -86,6 +97,7 @@ function startDay(data: GameData, state: RunState): void {
  *  the good with the higher baseline sell price (best Good-tier buyer price), then by id.
  *  Null when the bag is empty. */
 export function guaranteedGood(data: GameData, state: RunState): string | null {
+  data = areaView(data, state.area);
   const counts = new Map<string, number>();
   for (const it of state.inventory) counts.set(it.good, (counts.get(it.good) ?? 0) + 1);
   const sellPrice = (good: string) =>
@@ -111,10 +123,11 @@ export function guaranteedGood(data: GameData, state: RunState): string | null {
 
 /** The lowest price any seller could charge today (its best tier, after the Dealer's discounts). */
 function cheapestSellerPrice(data: GameData, state: RunState): number {
+  data = areaView(data, state.area);
   return Math.min(
     ...Object.values(data.actors)
       .filter((a) => a.role === 'supplier')
-      .flatMap((a) => a.goods.map((g) => sellerPrice(state, g.good, Math.min(...Object.values(g.prices))))),
+      .flatMap((a) => a.goods.map((g) => sellerPrice(data, state, g.good, Math.min(...Object.values(g.prices))))),
   );
 }
 
@@ -125,6 +138,7 @@ function cheapestSellerPrice(data: GameData, state: RunState): number {
 export function rescueGood(data: GameData, state: RunState, dealtIds: string[]): string | null {
   if (state.inventory.length === 0) return null;
   if (freeSlots(state) > 0 && state.cash >= cheapestSellerPrice(data, state)) return null;
+  data = areaView(data, state.area);
   const bag = new Set(state.inventory.map((it) => it.good));
   const canSell = dealtIds.some((id) => {
     const a = data.actors[id];
@@ -199,6 +213,7 @@ export function maxSell(state: RunState, actorId: string, goodId: string): numbe
 /** Whether there's anything left to do at a location today: a good you can buy, a good you can
  *  sell, or (if the Dealer is here) a deal you can afford. */
 export function canAct(data: GameData, state: RunState, locationId: string): boolean {
+  data = areaView(data, state.area);
   const trade = actorsAt(state, locationId).some((id) => {
     const a = data.actors[id];
     const block = a.role === 'supplier' ? buyBlock : sellBlock;
@@ -259,7 +274,8 @@ function payStars(state: RunState, q: Quota): void {
   state.dealerCheapOwed = true;
 }
 
-/** What the last-chance buyout pays for one unit of a good: its lowest Bad-tier buyer price. */
+/** What the last-chance buyout pays for one unit of a good: its lowest Bad-tier buyer price
+ *  (from any area's buyers of it). */
 export function buyoutPrice(data: GameData, goodId: string): number {
   const prices = Object.values(data.actors).flatMap((a) =>
     a.role === 'buyer' ? a.goods.filter((g) => g.good === goodId).map((g) => g.prices.bad ?? g.prices.good) : [],
@@ -302,12 +318,66 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
     payStars(state, state.quota);
     state.quota = quotaFor(state.quota.index + 1);
     state.deck = { supplier: 0, buyer: 0 }; // a fresh tier deck for each quota
-    // p2: every 3rd quota (index % 3 === 2) will start a rule-changing event here.
     result = 'quotaPassed';
   }
+  const next = areaFor(data, state.day + 1);
+  if (next !== state.area) moveArea(data, state, next);
   state.day++;
   state.visited = null;
   startDay(data, state);
   updateQuota(state);
   return result;
+}
+
+/** Move the run to a new area (between days): the bag is bought back at what was paid for it,
+ *  and the run gets that area's locations and a fresh tier deck. `moved` is kept for the arrival
+ *  screen. */
+export function moveArea(data: GameData, state: RunState, area: string): void {
+  const units = state.inventory.length;
+  const refund = state.inventory.reduce((sum, it) => sum + it.paid, 0);
+  state.cash += refund;
+  state.stats.sold += units;
+  state.inventory = [];
+  state.area = area;
+  state.locations = pickLocations(data, state.seed, area, false);
+  state.deck = { supplier: 0, buyer: 0 };
+  state.dealer = null;
+  state.moved = { area, units, refund };
+}
+
+/** Debug: latch the current quota as met (its stars pending, as if met today), or unmet again. */
+export function debugSetQuotaMet(state: RunState, met: boolean): void {
+  const q = state.quota;
+  if (met) {
+    if (q.met) return;
+    const cash = state.cash;
+    state.cash = Math.max(cash, q.amount);
+    updateQuota(state);
+    state.cash = cash;
+  } else {
+    q.met = false;
+    q.starsPending = false;
+    delete q.starsAwarded;
+    delete q.earlyBonus;
+  }
+}
+
+/** Debug: the day "advance" goes to: the current quota's due day, or the next one's when it's
+ *  already due. Null when that would mean ending an unmet quota's due day. */
+export function debugAdvanceDay(state: RunState): number | null {
+  const q = state.quota;
+  if (state.day < q.dueDay) return q.dueDay;
+  return q.met ? quotaFor(q.index + 1).dueDay : null;
+}
+
+/** Debug: end days without trading until `debugAdvanceDay`. Returns the quota passed on the
+ *  way, if any. */
+export function debugAdvance(data: GameData, state: RunState): Quota | null {
+  const day = debugAdvanceDay(state);
+  let passed: Quota | null = null;
+  while (day !== null && state.day < day) {
+    const q = state.quota;
+    if (endDay(data, state) === 'quotaPassed') passed = q;
+  }
+  return passed;
 }

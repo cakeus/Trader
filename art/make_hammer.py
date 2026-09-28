@@ -1,4 +1,4 @@
-"""32x32 tools icon: a claw hammer lying on the diagonal (head upper-right)."""
+"""32x32 hammer icon: a claw hammer lying on the diagonal (head upper-right)."""
 import math
 
 from pixelkit import Sprite, hexc, edge
@@ -57,4 +57,4 @@ for (x, y) in handle - edge(handle) - grip:
         S.set(x, y, WOOD[0])
 
 S.center()
-S.save("tools", "goods")
+S.save("hammer", "goods")

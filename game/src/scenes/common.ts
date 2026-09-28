@@ -19,6 +19,47 @@ export function drawBackground(ui: Ui, path: string): void {
   ui.ctx.fillRect(0, 0, W, H);
 }
 
+const SNOW_FLAKES = 540;
+/** How far the flake count swings above and below `SNOW_FLAKES` over time. */
+const SNOW_GUST = 0.29;
+/** Flakes near the current count fade in and out over this many indices instead of popping. */
+const SNOW_FADE = 40;
+
+/** Falling pixel snow. Stateless: each flake's position is a function of its index and `ui.t`. */
+export function drawSnow(ui: Ui): void {
+  const { ctx } = ui;
+  // slow, irregular gusts: two out-of-step waves, together in -1..1
+  const gust = 0.7 * Math.sin((ui.t * Math.PI * 2) / 37) + 0.3 * Math.sin((ui.t * Math.PI * 2) / 13 + 1.7);
+  const count = SNOW_FLAKES * (1 + SNOW_GUST * gust);
+  const max = Math.ceil(SNOW_FLAKES * (1 + SNOW_GUST));
+  for (let i = 0; i < max; i++) {
+    const vis = Math.min(1, (count - i) / SNOW_FADE);
+    if (vis <= 0) break;
+    // cheap per-flake hashes in 0..1
+    const r1 = (Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const r2 = (Math.sin(i * 78.233) * 12543.917) % 1;
+    const r3 = (Math.sin(i * 39.425) * 24634.634) % 1;
+    const a = Math.abs(r1), b = Math.abs(r2), c = Math.abs(r3);
+    // three depth layers: far flakes are small and slow
+    const layer = i % 3;
+    const size = layer === 2 ? 2 : 1;
+    const speed = 14 + layer * 10 + c * 8;
+    const drift = 6 + layer * 4;
+    const y = ((b * (H + 20) + ui.t * speed) % (H + 20)) - 10;
+    const x = (((a * W + Math.sin(ui.t * (0.6 + c * 0.6) + i) * drift - ui.t * 4) % W) + W) % W;
+    const fx = Math.round(x), fy = Math.round(y);
+    ctx.globalAlpha = vis;
+    // the big near flakes get a faint 1px shadow below so they read against pale snow
+    if (layer === 2) {
+      ctx.fillStyle = 'rgba(80,92,150,0.2)';
+      ctx.fillRect(fx, fy + size, size, 1);
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(fx, fy, size, size);
+  }
+  ctx.globalAlpha = 1;
+}
+
 export function drawPortrait(ui: Ui, actor: Pick<ActorDef, 'portrait' | 'name'> & { role?: Role }, x: number, y: number): void {
   if (ui.image(actor.portrait, x, y)) return;
   ui.ctx.fillStyle = actor.role === 'supplier' ? '#8ecf8a' : actor.role === 'buyer' ? '#8ab8e8' : '#e8c86a';

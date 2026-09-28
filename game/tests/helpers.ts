@@ -7,5 +7,5 @@ const dir = join(__dirname, '..', 'public', 'data');
 const read = (name: string) => JSON.parse(readFileSync(join(dir, `${name}.json`), 'utf8'));
 
 export function loadTestData(): GameData {
-  return buildData(read('goods'), read('actors'), read('locations'), read('dealer'));
+  return buildData(read('goods'), read('actors'), read('locations'), read('dealer'), read('categories'), read('areas'));
 }

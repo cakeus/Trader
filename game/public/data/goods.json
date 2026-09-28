@@ -1,10 +1,27 @@
 [
-  { "id": "strawberry", "name": "Strawberry", "icon": "assets/goods/strawberry.png", "iconSmall": "assets/goods/strawberry_8.png", "iconMedium": "assets/goods/strawberry_16.png", "dealerDiscount": 1,
+  { "id": "strawberry", "name": "Strawberry", "category": "food", "area": "bay",
+    "icon": "assets/goods/strawberry.png", "iconSmall": "assets/goods/strawberry_8.png", "iconMedium": "assets/goods/strawberry_16.png", "dealerDiscount": 1,
     "blurb": "Plump, sun-warmed, and only slightly nibbled." },
-  { "id": "seashell", "name": "Seashell", "icon": "assets/goods/seashell.png", "iconSmall": "assets/goods/seashell_8.png", "iconMedium": "assets/goods/seashell_16.png", "dealerDiscount": 1,
+  { "id": "seashell", "name": "Seashell", "category": "treasure", "area": "bay",
+    "icon": "assets/goods/seashell.png", "iconSmall": "assets/goods/seashell_8.png", "iconMedium": "assets/goods/seashell_16.png", "dealerDiscount": 1,
     "blurb": "Hold it to your ear. Is that the sea, or your rent?" },
-  { "id": "old_record", "name": "Old Record", "icon": "assets/goods/old_record.png", "iconSmall": "assets/goods/old_record_8.png", "iconMedium": "assets/goods/old_record_16.png", "dealerDiscount": 1,
+  { "id": "old_record", "name": "Old Record", "category": "music", "area": "bay",
+    "icon": "assets/goods/old_record.png", "iconSmall": "assets/goods/old_record_8.png", "iconMedium": "assets/goods/old_record_16.png", "dealerDiscount": 1,
     "blurb": "Crackly jazz from a decade nobody remembers." },
-  { "id": "tools", "name": "Tools", "icon": "assets/goods/tools.png", "iconSmall": "assets/goods/tools_8.png", "iconMedium": "assets/goods/tools_16.png", "dealerDiscount": 2,
-    "blurb": "A sturdy hammer. Every job looks like a nail now." }
+  { "id": "hammer", "name": "Hammer", "category": "tools", "area": "bay",
+    "icon": "assets/goods/hammer.png", "iconSmall": "assets/goods/hammer_8.png", "iconMedium": "assets/goods/hammer_16.png", "dealerDiscount": 2,
+    "blurb": "A sturdy hammer. Every job looks like a nail now." },
+
+  { "id": "hot_cocoa", "name": "Hot Cocoa", "category": "food", "area": "peaks",
+    "icon": "assets/goods/hot_cocoa.png", "iconSmall": "assets/goods/hot_cocoa_8.png", "iconMedium": "assets/goods/hot_cocoa_16.png", "dealerDiscount": 2,
+    "blurb": "Extra marshmallows. Warms your paws and your prospects." },
+  { "id": "crystal", "name": "Crystal", "category": "treasure", "area": "peaks",
+    "icon": "assets/goods/crystal.png", "iconSmall": "assets/goods/crystal_8.png", "iconMedium": "assets/goods/crystal_16.png", "dealerDiscount": 2,
+    "blurb": "Dug out of the mountain. It hums if you're quiet enough." },
+  { "id": "music_box", "name": "Music Box", "category": "music", "area": "peaks",
+    "icon": "assets/goods/music_box.png", "iconSmall": "assets/goods/music_box_8.png", "iconMedium": "assets/goods/music_box_16.png", "dealerDiscount": 2,
+    "blurb": "Wind it up for a lullaby about snow that never melts." },
+  { "id": "pickaxe", "name": "Pickaxe", "category": "tools", "area": "peaks",
+    "icon": "assets/goods/pickaxe.png", "iconSmall": "assets/goods/pickaxe_8.png", "iconMedium": "assets/goods/pickaxe_16.png", "dealerDiscount": 4,
+    "blurb": "For ice, rock, and very stubborn jam jars." }
 ]

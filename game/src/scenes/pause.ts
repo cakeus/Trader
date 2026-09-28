@@ -1,9 +1,25 @@
 import type { App, Scene } from '../app';
 import { seedLabel } from '../engine/rng';
 import { H, W } from '../engine/screen';
-import { C, type Ui } from '../engine/ui';
+import { C, type Rect, type Ui } from '../engine/ui';
+import { debugAdvance, debugAdvanceDay, debugSetQuotaMet, updateQuota } from '../game/run';
 import { Confirm } from './common';
 import { MainMenu } from './mainMenu';
+import { showDayEnd } from './location';
+
+const MENU_W = 240;
+const ROW = 34;
+
+/** A centred panel with a title, `rows` buttons high, plus `extra` pixels at the bottom. */
+function menuPanel(
+  ui: Ui, title: string, rows: number, extra = 0, width = MENU_W,
+): { r: Rect; x: number; w: number; y: number } {
+  const h = 44 + rows * ROW + 12 + extra;
+  const r = { x: (W - width) / 2, y: (H - h) / 2, w: width, h };
+  ui.nine('panel', r);
+  ui.text(title, W / 2, r.y + 16, C.ink, { align: 'center', scale: 2 });
+  return { r, x: r.x + 30, w: width - 60, y: r.y + 44 };
+}
 
 export class PauseMenu implements Scene {
   constructor(private app: App) {}
@@ -11,32 +27,29 @@ export class PauseMenu implements Scene {
   frame(ui: Ui): void {
     const { app } = this;
     ui.dim(0.6);
-    const w = 240;
-    const h = 224;
-    const r = { x: (W - w) / 2, y: (H - h) / 2, w, h };
-    ui.nine('panel', r);
-    ui.text('Paused', W / 2, r.y + 16, C.ink, { align: 'center', scale: 2 });
+    // a submenu on top takes the panel's place
+    if (!ui.active && this.app.scenes.at(-1) instanceof SubMenu) return;
+    const debug = import.meta.env.DEV;
+    const { r, x, w, y: top } = menuPanel(ui, 'Paused', debug ? 5 : 4, 22);
+    let y = top;
+    const row = (label: string) => {
+      const hit = ui.button({ x, y, w, h: 26 }, label);
+      y += ROW;
+      return hit;
+    };
 
-    const bx = r.x + 30;
-    const bw = w - 60;
-    let y = r.y + 44;
-    if (ui.button({ x: bx, y, w: bw, h: 26 }, 'Resume') || ui.key('Escape')) {
+    if (row('Resume') || ui.key('Escape')) {
       app.pop(this);
       return;
     }
-    y += 34;
-    if (ui.button({ x: bx, y, w: bw, h: 26 }, `Sound: ${app.sfx.muted ? 'Off' : 'On'}`)) {
-      app.sfx.muted = !app.sfx.muted;
-    }
-    y += 34;
-    if (ui.button({ x: bx, y, w: bw, h: 26 }, 'Save & Quit to Title')) {
+    if (row('Options')) app.push(new OptionsMenu(app));
+    if (row('Save & Quit to Title')) {
       app.save();
       app.run = null;
       app.goto(new MainMenu(app));
       return;
     }
-    y += 34;
-    if (ui.button({ x: bx, y, w: bw, h: 26 }, 'Abandon Run')) {
+    if (row('Abandon Run')) {
       app.push(
         new Confirm(app, 'Abandon run?', 'This run will be gone for good.', 'Abandon', () => {
           app.endRun();
@@ -44,6 +57,92 @@ export class PauseMenu implements Scene {
         }),
       );
     }
-    if (app.run) ui.text(`Seed ${seedLabel(app.run.seed)}`, W / 2, r.y + h - 22, C.inkSoft, { align: 'center' });
+    if (debug && row('Debug')) app.push(new DebugMenu(app));
+    if (app.run) ui.text(`Seed ${seedLabel(app.run.seed)}`, W / 2, r.y + r.h - 22, C.inkSoft, { align: 'center' });
+  }
+}
+
+/** A menu opened from the pause menu, drawn in its place. */
+abstract class SubMenu implements Scene {
+  constructor(protected app: App) {}
+  abstract frame(ui: Ui): void;
+}
+
+/** Sound, music and display options (kept in `app.settings`). */
+export class OptionsMenu extends SubMenu {
+  frame(ui: Ui): void {
+    const { app } = this;
+    const s = app.settings;
+    const { x, w, y: top } = menuPanel(ui, 'Options', 4);
+    let y = top;
+    const row = (label: string) => {
+      const hit = ui.button({ x, y, w, h: 26 }, label);
+      y += ROW;
+      return hit;
+    };
+    const onOff = (b: boolean) => (b ? 'On' : 'Off');
+
+    if (row(`Sound: ${onOff(s.sound)}`)) {
+      s.sound = !s.sound;
+      app.applySettings();
+    }
+    if (row(`Music: ${onOff(s.music)}`)) {
+      s.music = !s.music;
+      app.applySettings();
+    }
+    if (row(`Stretch to Fit: ${onOff(s.stretch)}`)) {
+      s.stretch = !s.stretch;
+      app.applySettings();
+    }
+    if (row('Back') || ui.key('Escape')) app.pop(this);
+  }
+}
+
+/** Dev-build shortcuts for testing a run. */
+class DebugMenu extends SubMenu {
+  frame(ui: Ui): void {
+    const { app } = this;
+    const run = app.run!;
+    const { x, w, y: top } = menuPanel(ui, 'Debug', 5, 0, 300);
+    let y = top;
+    const q = run.quota;
+    if (ui.button({ x, y, w, h: 26 }, q.met ? 'Mark Quota Incomplete' : 'Mark Quota Complete')) {
+      debugSetQuotaMet(run, !q.met);
+      app.save();
+    }
+    y += ROW;
+
+    const day = debugAdvanceDay(run);
+    const label = day === null ? 'Advance (quota not met)' : `Advance to Day ${day}`;
+    if (ui.button({ x, y, w, h: 26 }, label, { disabled: day === null })) {
+      const prevArea = run.area;
+      showDayEnd(app, debugAdvance(app.data, run), prevArea);
+      return;
+    }
+    y += ROW;
+
+    // a label, then small buttons that add to (or reset) a number
+    const adjust = (text: string, steps: number[], apply: (n: number | null) => void) => {
+      ui.text(text, x, y + 9, C.ink);
+      const bw = 44;
+      let bx = x + w - (steps.length + 1) * (bw + 4) + 4 - 8;
+      for (const n of steps) {
+        if (ui.button({ x: bx, y, w: bw, h: 26 }, `+${n}`)) apply(n);
+        bx += bw + 4;
+      }
+      if (ui.button({ x: bx, y, w: bw + 8, h: 26 }, 'Reset')) apply(null);
+      y += ROW;
+    };
+    adjust(`Cash $${run.cash}`, [5, 20], (n) => {
+      run.cash = n === null ? 0 : run.cash + n;
+      updateQuota(run);
+      app.save();
+    });
+    adjust(`Stars ${run.stars}`, [1, 5], (n) => {
+      run.stars = n === null ? 0 : run.stars + n;
+      app.save();
+    });
+
+    if (ui.button({ x, y, w, h: 26 }, 'Back') || ui.key('Escape')) app.pop(this);
   }
 }

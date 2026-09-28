@@ -4,13 +4,14 @@ import { C, type Rect, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
 import { describeDeal } from '../game/dealer';
 import { actorsAt, avgPaid, buyoutOffer, canAct, endDay, offer } from '../game/run';
-import type { Point, Role, Tier } from '../game/types';
+import type { Point, Quota, Role, Tier } from '../game/types';
 import { BuyoutDialog } from './buyout';
 import { DealerDialog } from './dealer';
 import { Confirm, drawBackground, drawBag, drawHud, drawPortrait, HUD_H } from './common';
 import { GameOver } from './gameOver';
 import { MapScene } from './map';
 import { QuotaResult } from './quotaResult';
+import { AreaTransition } from './arrival';
 import { quickTrade, TradeDialog } from './trade';
 
 const DEAL_LABEL: Record<Tier, { text: string; color: string } | undefined> = {
@@ -110,7 +111,7 @@ export class LocationScene implements Scene {
     const { data } = this.app;
     const run = this.app.run!;
     const rows = run.dealer!.offers.map((o) => ({
-      title: describeDeal(data, o.deal).title,
+      title: describeDeal(data, o.deal, run.area).title,
       note: o.sold ? 'Sold' : `${o.cost} stars`,
       color: o.sold ? C.muted : run.stars < o.cost ? C.redLight : C.gold,
     }));
@@ -127,7 +128,7 @@ export class LocationScene implements Scene {
   }
 
   private actorTooltip(ui: Ui, actorId: string): void {
-    const { data } = this.app;
+    const data = this.app.view;
     const run = this.app.run!;
     const a = data.actors[actorId];
     const seller = a.role === 'supplier';
@@ -190,6 +191,7 @@ export class LocationScene implements Scene {
     const { app } = this;
     const run = app.run!;
     const prev = run.quota;
+    const prevArea = run.area;
     const res = endDay(app.data, run);
     if (res === 'failed') {
       app.endRun();
@@ -197,13 +199,25 @@ export class LocationScene implements Scene {
       app.goto(new GameOver(app, run));
       return;
     }
-    app.save();
-    app.goto(new MapScene(app));
-    if (res === 'quotaPassed') {
-      app.sfx.play('quota');
-      app.push(new QuotaResult(app, prev));
-    } else {
-      app.sfx.play('day');
-    }
+    showDayEnd(app, res === 'quotaPassed' ? prev : null, prevArea);
+  }
+}
+
+/** After ending the day (or days): save, then go to the new day's map, with the quota result
+ *  when `passed` ended, or to the area transition when the run moved from `prevArea`. */
+export function showDayEnd(app: App, passed: Quota | null, prevArea: string): void {
+  app.save();
+  if (app.run!.area !== prevArea) {
+    // the quota result plays over the old area, then the move to the new one
+    app.sfx.play('quota');
+    app.goto(new AreaTransition(app, prevArea, passed));
+    return;
+  }
+  app.goto(new MapScene(app));
+  if (passed) {
+    app.sfx.play('quota');
+    app.push(new QuotaResult(app, passed));
+  } else {
+    app.sfx.play('day');
   }
 }

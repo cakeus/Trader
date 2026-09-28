@@ -1,0 +1,8 @@
+[
+  { "id": "bay", "name": "Blossom Bay", "map": "assets/bg/map.png", "fromDay": 1,
+    "music": "assets/audio/Spring Afternoon.mp3",
+    "blurb": "A sunny seaside town where every road ends at the water." },
+  { "id": "peaks", "name": "Frostpine Peaks", "map": "assets/bg/map_peaks.png", "fromDay": 22, "weather": "snow",
+    "music": "assets/audio/Winter Village Loop.mp3",
+    "blurb": "A snowy mountain town of warm windows, crunchy paths, and richer customers." }
+]

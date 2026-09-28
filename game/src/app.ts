@@ -1,8 +1,10 @@
 import type { Assets } from './engine/assets';
-import type { Sfx } from './engine/audio';
+import { MUSIC_FADE, type Sfx } from './engine/audio';
 import type { Input } from './engine/input';
-import { H, W } from './engine/screen';
+import { H, W, type Screen } from './engine/screen';
+import { saveSettings, type Settings } from './engine/settings';
 import type { Ui } from './engine/ui';
+import { areaFor, areasInOrder, areaView } from './game/area';
 import { clearRun, saveRun } from './game/save';
 import type { GameData, RunState } from './game/types';
 
@@ -16,16 +18,34 @@ export class App {
   run: RunState | null = null;
   /** "seed:day" the "Last Day!" announcement last played for (not saved, so it replays after Continue). */
   announced = '';
+  /** During the move: plays this area's music instead of the run's (null for silence), and
+   *  changes track over `musicFade` seconds. Undefined follows the run. */
+  musicArea: string | null | undefined = undefined;
+  musicFade = MUSIC_FADE;
   private fade = 0;
+  readonly ctx: CanvasRenderingContext2D;
 
   constructor(
-    readonly ctx: CanvasRenderingContext2D,
+    readonly screen: Screen,
     readonly ui: Ui,
     readonly data: GameData,
     readonly assets: Assets,
     readonly input: Input,
     readonly sfx: Sfx,
-  ) {}
+    readonly settings: Settings,
+  ) {
+    this.ctx = screen.ctx;
+    this.applySettings();
+  }
+
+  /** Push `settings` out to the sound and screen, and remember them. */
+  applySettings(): void {
+    const s = this.settings;
+    this.sfx.muted = !s.sound;
+    this.sfx.musicMuted = !s.music;
+    this.screen.stretch = s.stretch;
+    saveSettings(s);
+  }
 
   /** Replace the whole stack (a full screen change) with a short fade-in. */
   goto(scene: Scene): void {
@@ -43,6 +63,16 @@ export class App {
     else this.scenes = this.scenes.filter((s) => s !== scene);
   }
 
+  /** The run's area (the first area when there's no run). */
+  get area(): string {
+    return this.run?.area ?? areaFor(this.data, 1);
+  }
+
+  /** The game data as seen from the run's area: its goods and locations, actors trading its goods. */
+  get view(): GameData {
+    return areaView(this.data, this.area);
+  }
+
   save(): void {
     if (this.run) saveRun(this.run);
   }
@@ -55,6 +85,11 @@ export class App {
   frame(dt: number): void {
     const { ctx, ui } = this;
     ui.begin(dt);
+    // the run's area music, or the first area's on the title screen
+    const area = this.musicArea === undefined ? this.run?.area : this.musicArea;
+    const music = area === null ? null : (area ? this.data.areas[area] : areasInOrder(this.data)[0]).music;
+    this.sfx.music(music, this.musicFade);
+    this.sfx.update(dt);
     ctx.fillStyle = '#1a1426';
     ctx.fillRect(0, 0, W, H);
     const stack = this.scenes.slice();

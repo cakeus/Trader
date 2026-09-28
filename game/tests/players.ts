@@ -7,6 +7,7 @@
  * A Profile is a strategy a real player might try: which location to pick, which
  * Dealer deals to buy (and in what order), and which goods to favour.
  */
+import { areaView } from '../src/game/area';
 import { buyDealerDeal, dealFromKey, dealGood, isUniversal } from '../src/game/dealer';
 import { sellerPrice, tierPrice, tierWeights } from '../src/game/economy';
 import { actorsAt, buy, maxSell, offer, sell, visit } from '../src/game/run';
@@ -34,10 +35,10 @@ export function expectedPrice(s: RunState, actorId: string, good: string): numbe
   const a = data.actors[actorId];
   const ag = a.goods.find((g) => g.good === good)!;
   const seller = a.role === 'supplier';
-  const w = tierWeights(s, good, a.role);
+  const w = tierWeights(data, s, good, a.role);
   return TIERS.filter((t) => w[t]).reduce((sum, t) => {
     const p = tierPrice(ag.prices, t);
-    return sum + w[t]! * (seller ? sellerPrice(s, good, p) : p);
+    return sum + w[t]! * (seller ? sellerPrice(data, s, good, p) : p);
   }, 0);
 }
 
@@ -78,10 +79,11 @@ const noBias: Bias = () => 1;
 
 /** Expected value of visiting `loc` with the current bag (what a thoughtful player estimates). */
 export function score(s: RunState, loc: string, bias: Bias = noBias): number {
+  const { actors } = areaView(data, s.area);
   let v = 0;
   const bag = s.inventory.map((it) => it.good);
   for (const a of actorsAt(s, loc)) {
-    const def = data.actors[a];
+    const def = actors[a];
     if (def.role !== 'buyer') continue;
     for (const g of def.goods) {
       const n = bag.filter((x) => x === g.good).length;
@@ -91,8 +93,8 @@ export function score(s: RunState, loc: string, bias: Bias = noBias): number {
   }
   // small bonus for being able to restock with something profitable
   for (const a of actorsAt(s, loc))
-    if (data.actors[a].role === 'supplier')
-      for (const g of data.actors[a].goods)
+    if (actors[a].role === 'supplier')
+      for (const g of actors[a].goods)
         v += 0.5 * bias(s, g.good) * (resale(s, g.good) - expectedPrice(s, a, g.good));
   return v;
 }
@@ -103,11 +105,11 @@ const best = (s: RunState, value: (loc: string) => number) =>
 export const sensible: Policy = (s) => best(s, (l) => score(s, l));
 export const random: Policy = (s, rng) => s.locations[Math.floor(rng() * s.locations.length)].id;
 
-/** The good a Specialist has committed to: the one it owns the most per-good deals for. */
+/** The good a Specialist has committed to: the area's good of the category it owns the most deals for. */
 export function focusGood(s: RunState): string | null {
   const counts = new Map<string, number>();
   for (const key of s.perks.owned) {
-    const good = dealGood(dealFromKey(key));
+    const good = dealGood(data, dealFromKey(key), s.area);
     if (good) counts.set(good, (counts.get(good) ?? 0) + 1);
   }
   let top: string | null = null;
@@ -164,7 +166,7 @@ export const PROFILES: Record<string, Profile> = {
       }),
     dealRank: (s, d) => {
       if (d.kind === 'bag') return 10; // more slots help every strategy
-      const good = dealGood(d);
+      const good = dealGood(data, d, s.area);
       const focus = focusGood(s);
       if (good) return focus === null || good === focus ? 3 + margin(s, good) / 10 : null;
       return isUniversal(d) ? 2 : null;
@@ -210,10 +212,11 @@ export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.im
     SIM.bought[next.o.deal.kind]++;
   }
   const actors = actorsAt(s, loc);
+  const defs = areaView(data, s.area).actors;
   // sell: highest-paying buyer first
   const sales = actors
-    .filter((a) => data.actors[a].role === 'buyer')
-    .flatMap((a) => data.actors[a].goods.map((g) => ({ a, good: g.good, price: offer(s, a, g.good).price })))
+    .filter((a) => defs[a].role === 'buyer')
+    .flatMap((a) => defs[a].goods.map((g) => ({ a, good: g.good, price: offer(s, a, g.good).price })))
     .sort((x, y) => y.price - x.price);
   const desperate = !s.quota.met && s.day >= s.quota.dueDay;
   for (const t of sales) sell(data, s, t.a, t.good, profile.noLoss && !desperate ? lossFree(s, t.good, t.price) : maxSell(s, t.a, t.good));
@@ -221,9 +224,9 @@ export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.im
   // buy: best expected margin first (scaled by the profile's bias)
   const bias = profile.bias ?? noBias;
   const buys = actors
-    .filter((a) => data.actors[a].role === 'supplier')
+    .filter((a) => defs[a].role === 'supplier')
     .flatMap((a) =>
-      data.actors[a].goods.map((g) => {
+      defs[a].goods.map((g) => {
         const p = offer(s, a, g.good).price;
         const r = resale(s, g.good);
         return { a, good: g.good, margin: r - p, ratio: (bias(s, g.good) * r) / p };

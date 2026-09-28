@@ -44,7 +44,7 @@ export class DealerDialog implements Scene {
 
     // rows
     visit.offers.forEach((o, i) => {
-      const deal = describeDeal(app.data, o.deal);
+      const deal = describeDeal(app.data, o.deal, run.area);
       const row: Rect = { x: r.x + 14, y: r.y + 100 + i * (ROW_H + 4), w: r.w - 28, h: ROW_H };
       const block = dealerBlock(run, i);
       const hot = ui.hover(row);

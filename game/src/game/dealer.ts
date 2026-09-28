@@ -1,12 +1,13 @@
 import { rngFor } from '../engine/rng';
+import { areaView, goodOf } from './area';
 import { CONFIG } from './config';
 import { offerKey, sellerPrice, tierPrice } from './economy';
-import type { ActorGood, DealerDeal, DealerVisit, GameData, GoodKind, RankedKind, Role, RunState } from './types';
+import type { ActorGood, CategoryKind, DealerDeal, DealerVisit, GameData, RankedKind, Role, RunState } from './types';
 
 export const BAG_TIERS = CONFIG.dealer.ranks.bag;
 
 const RANKED: RankedKind[] = ['bag', 'stockAll', 'buyerStockAll', 'luckAll'];
-const PER_GOOD: GoodKind[] = ['discount', 'stock', 'buyerStock', 'luck'];
+const PER_CATEGORY: CategoryKind[] = ['discount', 'stock', 'buyerStock', 'luck'];
 
 export function isRanked(deal: DealerDeal): deal is Extract<DealerDeal, { tier: number }> {
   return 'tier' in deal;
@@ -15,7 +16,7 @@ export function isRanked(deal: DealerDeal): deal is Extract<DealerDeal, { tier: 
 /** Stable id for a deal, used to remember which ones were bought. */
 export function dealKey(deal: DealerDeal): string {
   if (isRanked(deal)) return `${deal.kind}:${deal.tier}`;
-  if ('good' in deal) return `${deal.kind}:${deal.good}`;
+  if ('category' in deal) return `${deal.kind}:${deal.category}`;
   return deal.kind;
 }
 
@@ -23,7 +24,7 @@ export function dealKey(deal: DealerDeal): string {
 export function dealFromKey(key: string): DealerDeal {
   const [kind, arg] = key.split(':');
   if ((RANKED as string[]).includes(kind)) return { kind: kind as RankedKind, tier: Number(arg) };
-  if ((PER_GOOD as string[]).includes(kind)) return { kind: kind as GoodKind, good: arg };
+  if ((PER_CATEGORY as string[]).includes(kind)) return { kind: kind as CategoryKind, category: arg };
   return { kind: 'discountAll' };
 }
 
@@ -40,17 +41,20 @@ export function dealCost(deal: DealerDeal): number {
   return deal.kind === 'bag' ? CONFIG.dealer.bagCosts[deal.tier - 1] : CONFIG.dealer.cost[deal.kind];
 }
 
-/** Every deal (stamp) in the game: every rank of the ranked deals, a discount (if the good has
- *  one), extra stock, extra demand and better buyers per good, and the all-goods discount. */
+/** Every deal (stamp) in the game: every rank of the ranked deals, a discount (if the category's
+ *  goods have one), extra stock, extra demand and better buyers per category, and the all-goods
+ *  discount. Category deals work in every area. */
 export function allDeals(data: GameData): DealerDeal[] {
-  const goods = Object.keys(data.goods).sort();
+  const categories = Object.keys(data.categories);
+  const hasDiscount = (category: string) =>
+    Object.values(data.goods).some((g) => g.category === category && g.dealerDiscount > 0);
   const all: DealerDeal[] = [];
   const ranks = (kind: RankedKind) => {
     for (let tier = 1; tier <= CONFIG.dealer.ranks[kind]; tier++) all.push({ kind, tier });
   };
   ranks('bag');
-  for (const kind of PER_GOOD)
-    for (const good of goods) if (kind !== 'discount' || data.goods[good].dealerDiscount > 0) all.push({ kind, good });
+  for (const kind of PER_CATEGORY)
+    for (const category of categories) if (kind !== 'discount' || hasDiscount(category)) all.push({ kind, category });
   all.push({ kind: 'discountAll' });
   ranks('stockAll');
   ranks('buyerStockAll');
@@ -128,49 +132,52 @@ export function buyDealerDeal(data: GameData, state: RunState, index: number): b
   const deal = o.deal;
   const { perks } = state;
   perks.owned.push(dealKey(deal));
+  data = areaView(data, state.area);
   const allGoods = Object.keys(data.goods);
+  /** Today's good in the deal's category. */
+  const good = () => ('category' in deal ? goodOf(data, deal.category, state.area) : '');
   switch (deal.kind) {
     case 'bag':
       state.capacity++;
       break;
     case 'discount':
     case 'discountAll': {
-      if (deal.kind === 'discount') perks.discounts[deal.good] = data.goods[deal.good].dealerDiscount;
+      if (deal.kind === 'discount') perks.discounts[deal.category] = 1;
       else perks.discountAll += CONFIG.dealer.discountAll;
       // takes effect right away: re-price today's sellers
-      for (const good of deal.kind === 'discount' ? [deal.good] : allGoods)
-        forTodays(data, state, 'supplier', good, (actorId, prices) => {
-          const offer = state.market[offerKey(actorId, good)];
-          offer.price = sellerPrice(state, good, tierPrice(prices, offer.tier));
+      for (const g of deal.kind === 'discount' ? [good()] : allGoods)
+        forTodays(data, state, 'supplier', g, (actorId, prices) => {
+          const offer = state.market[offerKey(actorId, g)];
+          offer.price = sellerPrice(data, state, g, tierPrice(prices, offer.tier));
         });
       break;
     }
     case 'stock':
     case 'stockAll': {
       const n = deal.kind === 'stock' ? CONFIG.dealer.stockStep : CONFIG.dealer.stockAll;
-      if (deal.kind === 'stock') perks.stock[deal.good] = (perks.stock[deal.good] ?? 0) + n;
+      if (deal.kind === 'stock') perks.stock[deal.category] = (perks.stock[deal.category] ?? 0) + n;
       else perks.stockAll += n;
       // today's sellers restock right away
-      for (const good of deal.kind === 'stock' ? [deal.good] : allGoods)
-        forTodays(data, state, 'supplier', good, (actorId) => {
-          state.market[offerKey(actorId, good)].left += n;
+      for (const g of deal.kind === 'stock' ? [good()] : allGoods)
+        forTodays(data, state, 'supplier', g, (actorId) => {
+          state.market[offerKey(actorId, g)].left += n;
         });
       break;
     }
     case 'buyerStock':
     case 'buyerStockAll': {
       const n = deal.kind === 'buyerStock' ? CONFIG.dealer.buyerStockStep : CONFIG.dealer.buyerStockAll;
-      if (deal.kind === 'buyerStock') perks.buyerStock[deal.good] = (perks.buyerStock[deal.good] ?? 0) + n;
+      if (deal.kind === 'buyerStock') perks.buyerStock[deal.category] = (perks.buyerStock[deal.category] ?? 0) + n;
       else perks.buyerStockAll += n;
       // today's buyers want more right away
-      for (const good of deal.kind === 'buyerStock' ? [deal.good] : allGoods)
-        forTodays(data, state, 'buyer', good, (actorId) => {
-          state.market[offerKey(actorId, good)].left += n;
+      for (const g of deal.kind === 'buyerStock' ? [good()] : allGoods)
+        forTodays(data, state, 'buyer', g, (actorId) => {
+          state.market[offerKey(actorId, g)].left += n;
         });
       break;
     }
     case 'luck':
-      perks.luck[deal.good] = (perks.luck[deal.good] ?? 0) + CONFIG.dealer.luckStep;
+      perks.luck[deal.category] = (perks.luck[deal.category] ?? 0) + CONFIG.dealer.luckStep;
       break;
     case 'luckAll':
       perks.luckAll += CONFIG.dealer.luckAll;
@@ -195,36 +202,33 @@ function forTodays(
     }
 }
 
-/** The good a deal is about, if any (for its icon). */
-export function dealGood(deal: DealerDeal): string | null {
-  return 'good' in deal ? deal.good : null;
+/** The good a deal is about in an area, if any (for its icon). */
+export function dealGood(data: GameData, deal: DealerDeal, areaId: string): string | null {
+  return 'category' in deal ? goodOf(data, deal.category, areaId) : null;
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 
-/** Short title and a one-line description for the dialog and tooltip. */
-export function describeDeal(data: GameData, deal: DealerDeal): { title: string; body: string } {
+/** Short title and a one-line description for the dialog and tooltip. Category deals are named
+ *  after the category, with the area's good in the description. */
+export function describeDeal(data: GameData, deal: DealerDeal, areaId: string): { title: string; body: string } {
   const d = CONFIG.dealer;
+  const cat = 'category' in deal ? data.categories[deal.category].name : '';
+  const g = 'category' in deal ? data.goods[goodOf(data, deal.category, areaId)] : null;
+  const what = g ? `${cat} (${g.name})` : '';
   switch (deal.kind) {
     case 'bag':
       return { title: `Bigger Bag ${ROMAN[deal.tier - 1]}`, body: '+1 bag slot.' };
-    case 'discount': {
-      const g = data.goods[deal.good];
-      return { title: `${g.name} Sale`, body: `${g.name} cost $${g.dealerDiscount} less (min $1).` };
-    }
-    case 'stock': {
-      const g = data.goods[deal.good];
-      return { title: `${g.name} Surplus`, body: `+${d.stockStep} ${g.name} for sale each day.` };
-    }
+    case 'discount':
+      return { title: `${cat} Sale`, body: `${what} costs $${g!.dealerDiscount} less (min $1).` };
+    case 'stock':
+      return { title: `${cat} Surplus`, body: `+${d.stockStep} ${what} for sale each day.` };
     case 'luck': {
       const pct = Math.round(d.luckStep * 100 * 2);
-      const g = data.goods[deal.good];
-      return { title: `${g.name} Dealer`, body: `+${pct}% more deals on ${g.name}.` };
+      return { title: `${cat} Dealer`, body: `+${pct}% more deals on ${what}.` };
     }
-    case 'buyerStock': {
-      const g = data.goods[deal.good];
-      return { title: `${g.name} Demand`, body: `Buyers want ${d.buyerStockStep} more ${g.name} each day.` };
-    }
+    case 'buyerStock':
+      return { title: `${cat} Demand`, body: `Buyers want ${d.buyerStockStep} more ${what} each day.` };
     case 'luckAll': {
       const pct = Math.round(d.luckAll * 100 * 2);
       return { title: `Deals, Deals, Everywhere ${ROMAN[deal.tier - 1]}`, body: `+${pct}% more deals on ALL goods.` };

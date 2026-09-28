@@ -2,7 +2,8 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { visit } from '../game/run';
-import { drawBackground, drawBag, drawHud } from './common';
+import { AreaTransition } from './arrival';
+import { drawBackground, drawBag, drawHud, drawSnow } from './common';
 import { LocationScene } from './location';
 
 export class MapScene implements Scene {
@@ -11,7 +12,14 @@ export class MapScene implements Scene {
   frame(ui: Ui): void {
     const { app } = this;
     const run = app.run!;
-    drawBackground(ui, 'assets/bg/map.png');
+    // a save continued mid-move: play the arrival (its title, then the AreaArrival popup)
+    if (run.moved && app.scenes.length === 1) {
+      app.scenes = [new AreaTransition(app, null)];
+      return;
+    }
+    const area = app.data.areas[run.area];
+    drawBackground(ui, area.map);
+    if (area.weather === 'snow') drawSnow(ui);
 
     for (const loc of run.locations) {
       const def = app.data.locations[loc.id];
@@ -46,7 +54,7 @@ export class MapScene implements Scene {
   }
 
   private locationTooltip(ui: Ui, locId: string, actorIds: string[]): void {
-    const { data } = this.app;
+    const data = this.app.view;
     const def = data.locations[locId];
     // goods traded here, deduped, from the player's point of view
     const goodsFor = (role: 'supplier' | 'buyer') => [

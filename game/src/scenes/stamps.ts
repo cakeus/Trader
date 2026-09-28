@@ -50,7 +50,7 @@ export class StampsDialog implements Scene {
   }
 
   private tooltip(ui: Ui, deal: DealerDeal): void {
-    const { title, body } = describeDeal(this.app.data, deal);
+    const { title, body } = describeDeal(this.app.data, deal, this.app.area);
     const w = Math.max(ui.font.measure(title), ui.font.measure(body)) + 16;
     ui.tooltip(w, 36, (x, y) => {
       ui.text(title, x, y + 1, C.gold);

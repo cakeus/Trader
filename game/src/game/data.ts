@@ -1,4 +1,4 @@
-import type { ActorDef, DealerDef, GameData, GoodDef, LocationDef } from './types';
+import type { ActorDef, AreaDef, CategoryDef, DealerDef, GameData, GoodDef, LocationDef } from './types';
 
 function byId<T extends { id: string }>(list: T[]): Record<string, T> {
   return Object.fromEntries(list.map((x) => [x.id, x]));
@@ -10,11 +10,34 @@ export function buildData(
   actors: ActorDef[],
   locations: LocationDef[],
   dealer: DealerDef,
+  categories: CategoryDef[],
+  areas: AreaDef[],
 ): GameData {
-  const data: GameData = { goods: byId(goods), actors: byId(actors), locations: byId(locations), dealer };
+  const data: GameData = {
+    goods: byId(goods), actors: byId(actors), locations: byId(locations), dealer,
+    categories: byId(categories), areas: byId(areas),
+  };
   const errors: string[] = [];
+  if (!areas.some((a) => a.fromDay === 1)) errors.push('no area starts on day 1');
+  for (const area of areas) {
+    // every category has exactly one good here
+    for (const c of categories) {
+      const n = goods.filter((g) => g.area === area.id && g.category === c.id).length;
+      if (n !== 1) errors.push(`area ${area.id}: ${n} ${c.id} goods (want 1)`);
+    }
+    const cast = actors.filter((a) => a.goods.some((g) => data.goods[g.good]?.area === area.id)).length;
+    const here = locations.filter((l) => l.area === area.id);
+    const slots = here.reduce((sum, l) => sum + l.actorSlots, 0);
+    if (here.length === 0) errors.push(`area ${area.id}: no locations`);
+    if (slots > cast) errors.push(`area ${area.id}: only ${cast} actors for ${slots} daily slots`);
+  }
+  for (const g of goods) {
+    if (!data.categories[g.category]) errors.push(`good ${g.id}: unknown category ${g.category}`);
+    if (!data.areas[g.area]) errors.push(`good ${g.id}: unknown area ${g.area}`);
+  }
   for (const a of actors) {
     if (a.role !== 'supplier' && a.role !== 'buyer') errors.push(`actor ${a.id}: bad role ${a.role}`);
+    if (a.goods.length !== 1) errors.push(`actor ${a.id}: trades ${a.goods.length} goods (want 1)`);
     for (const g of a.goods) {
       if (!data.goods[g.good]) errors.push(`actor ${a.id}: unknown good ${g.good}`);
       // Better deals are better for the player: sellers get cheaper, buyers pay more.
@@ -37,14 +60,12 @@ export function buildData(
     if (!trades('supplier') || !trades('buyer')) errors.push(`good ${g.id}: needs at least one seller and one buyer`);
     if (!Number.isInteger(g.dealerDiscount) || g.dealerDiscount < 0) errors.push(`good ${g.id}: bad dealerDiscount`);
   }
-  let slots = 0;
   for (const l of locations) {
     if (l.slots.length < l.actorSlots) errors.push(`location ${l.id}: fewer slots than actorSlots`);
     if (!l.dealerSlot) errors.push(`location ${l.id}: missing dealerSlot`);
-    slots += l.actorSlots;
+    if (!data.areas[l.area]) errors.push(`location ${l.id}: unknown area ${l.area}`);
   }
   if (!dealer?.id || !dealer.portrait) errors.push('dealer: missing id or portrait');
-  if (slots > actors.length) errors.push(`only ${actors.length} actors for ${slots} daily slots`);
   if (errors.length) throw new Error('Invalid game data:\n' + errors.join('\n'));
   return data;
 }
@@ -55,11 +76,13 @@ export async function loadData(): Promise<GameData> {
     if (!res.ok) throw new Error(`failed to load data/${name}.json`);
     return (await res.json()) as T;
   };
-  const [goods, actors, locations, dealer] = await Promise.all([
+  const [goods, actors, locations, dealer, categories, areas] = await Promise.all([
     get<GoodDef[]>('goods'),
     get<ActorDef[]>('actors'),
     get<LocationDef[]>('locations'),
     get<DealerDef>('dealer'),
+    get<CategoryDef[]>('categories'),
+    get<AreaDef[]>('areas'),
   ]);
-  return buildData(goods, actors, locations, dealer);
+  return buildData(goods, actors, locations, dealer, categories, areas);
 }

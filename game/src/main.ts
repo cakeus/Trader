@@ -4,6 +4,7 @@ import { Sfx } from './engine/audio';
 import { Font, type FontMeta } from './engine/font';
 import { Input } from './engine/input';
 import { createScreen } from './engine/screen';
+import { loadSettings } from './engine/settings';
 import { Ui } from './engine/ui';
 import { loadData } from './game/data';
 import { MainMenu } from './scenes/mainMenu';
@@ -21,7 +22,7 @@ async function boot(): Promise<void> {
   await assets.load([
     ...UI_IMAGES,
     'assets/font/font.png',
-    'assets/bg/map.png',
+    ...Object.values(data.areas).map((a) => a.map),
     ...Object.values(data.goods).flatMap((g) => [g.icon, g.iconSmall, g.iconMedium]),
     ...Object.values(data.actors).map((a) => a.portrait),
     data.dealer.portrait,
@@ -33,7 +34,7 @@ async function boot(): Promise<void> {
   const sfx = new Sfx();
   input.attach(screen, () => sfx.unlock());
   const ui = new Ui(screen.ctx, font, assets, input, sfx);
-  const app = new App(screen.ctx, ui, data, assets, input, sfx);
+  const app = new App(screen, ui, data, assets, input, sfx, loadSettings());
   app.goto(new MainMenu(app));
 
   // `?timer` drives frames with setTimeout so the game keeps ticking in a hidden
