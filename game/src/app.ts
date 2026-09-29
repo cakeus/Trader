@@ -1,6 +1,7 @@
 import type { Assets } from './engine/assets';
 import { MUSIC_FADE, type Sfx } from './engine/audio';
 import type { Input } from './engine/input';
+import { isMobile } from './engine/device';
 import { H, W, type Screen } from './engine/screen';
 import { saveSettings, type Settings } from './engine/settings';
 import type { Ui } from './engine/ui';
@@ -21,6 +22,8 @@ export class App {
   /** During the move: plays this area's music instead of the run's (null for silence), and
    *  changes track over `musicFade` seconds. Undefined follows the run. */
   musicArea: string | null | undefined = undefined;
+  /** The saved run's area, shown and played on the title screen while there's no run loaded. */
+  titleArea: string | null = null;
   musicFade = MUSIC_FADE;
   private fade = 0;
   readonly ctx: CanvasRenderingContext2D;
@@ -43,7 +46,8 @@ export class App {
     const s = this.settings;
     this.sfx.muted = !s.sound;
     this.sfx.musicMuted = !s.music;
-    this.screen.stretch = s.stretch;
+    // whole-number scaling breaks on phones, so they always stretch
+    this.screen.stretch = s.stretch || isMobile;
     saveSettings(s);
   }
 
@@ -85,8 +89,8 @@ export class App {
   frame(dt: number): void {
     const { ctx, ui } = this;
     ui.begin(dt);
-    // the run's area music, or the first area's on the title screen
-    const area = this.musicArea === undefined ? this.run?.area : this.musicArea;
+    // the run's area music, or on the title screen the saved run's (else the first area's)
+    const area = this.musicArea === undefined ? (this.run?.area ?? this.titleArea ?? undefined) : this.musicArea;
     const music = area === null ? null : (area ? this.data.areas[area] : areasInOrder(this.data)[0]).music;
     this.sfx.music(music, this.musicFade);
     this.sfx.update(dt);
@@ -103,7 +107,8 @@ export class App {
       ctx.fillRect(0, 0, W, H);
       this.fade = Math.max(0, this.fade - dt * 4);
     }
-    if (this.input.x >= 0) ui.image('assets/ui/cursor.png', this.input.x, this.input.y);
+    // touch screens have no pointer to show
+    if (this.input.x >= 0 && !isMobile) ui.image('assets/ui/cursor.png', this.input.x, this.input.y);
     this.input.endFrame();
   }
 }

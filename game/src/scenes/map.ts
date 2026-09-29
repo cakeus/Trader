@@ -1,15 +1,23 @@
 import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
+import { todayEvent, weatherOn } from '../game/events';
 import { visit } from '../game/run';
 import { AreaTransition } from './arrival';
-import { drawBackground, drawBag, drawHud, drawSnow } from './common';
+import { drawBackground, drawBag, drawHud, drawWeather } from './common';
+import { EventNotice } from './event';
 import { LocationScene } from './location';
 
+/** Seconds the map must be on top (so the weather's been seen) before a new event's notice. */
+const EVENT_NOTICE_DELAY = 1.5;
+
 export class MapScene implements Scene {
+  /** Seconds this map has been the top scene. */
+  private watched = 0;
+
   constructor(private app: App) {}
 
-  frame(ui: Ui): void {
+  frame(ui: Ui, dt: number): void {
     const { app } = this;
     const run = app.run!;
     // a save continued mid-move: play the arrival (its title, then the AreaArrival popup)
@@ -19,7 +27,8 @@ export class MapScene implements Scene {
     }
     const area = app.data.areas[run.area];
     drawBackground(ui, area.map);
-    if (area.weather === 'snow') drawSnow(ui);
+    drawWeather(ui, weatherOn(app.data, run.area, run.day));
+    this.eventNotice(ui, dt);
 
     for (const loc of run.locations) {
       const def = app.data.locations[loc.id];
@@ -27,19 +36,22 @@ export class MapScene implements Scene {
       const lw = ui.font.measure(def.name) + 18;
       const label: Rect = { x: Math.round(x - lw / 2), y: y + 4, w: lw, h: 22 };
       const hit: Rect = { x: label.x, y: y - 20, w: lw, h: 46 };
-      const hot = ui.hover(hit);
+      const hot = ui.focus(`loc:${loc.id}`, hit);
       const bob = hot ? -Math.round(Math.abs(Math.sin(ui.t * 6)) * 3) : 0;
 
       ui.image('assets/ui/icon_pin.png', x - 8, y - 17 + bob);
       ui.nine(hot ? 'row_hover' : 'panel', label);
       ui.text(def.name, x, label.y + 7, C.ink, { align: 'center' });
 
-      if (hot) this.locationTooltip(ui, loc.id, loc.actorIds);
-      if (ui.clicked(hit)) {
+      const go = () => {
         visit(app.data, run, loc.id);
         app.save();
         app.sfx.play('open');
         app.goto(new LocationScene(app, loc.id));
+      };
+      if (hot) this.locationTooltip(ui, loc.id, loc.actorIds, go);
+      if (ui.activated(hit)) {
+        go();
         return;
       }
     }
@@ -53,7 +65,19 @@ export class MapScene implements Scene {
     drawHud(app, ui);
   }
 
-  private locationTooltip(ui: Ui, locId: string, actorIds: string[]): void {
+  /** The first morning of an event: once the map has been on top for a moment, explain it. */
+  private eventNotice(ui: Ui, dt: number): void {
+    const { app } = this;
+    const run = app.run!;
+    if (ui.active) this.watched += dt;
+    const event = todayEvent(app.data, run);
+    if (!event || run.eventsSeen?.includes(event.id) || this.watched < EVENT_NOTICE_DELAY) return;
+    run.eventsSeen = [...(run.eventsSeen ?? []), event.id];
+    app.save();
+    app.push(new EventNotice(app, event));
+  }
+
+  private locationTooltip(ui: Ui, locId: string, actorIds: string[], go: () => void): void {
     const data = this.app.view;
     const def = data.locations[locId];
     // goods traded here, deduped, from the player's point of view
@@ -88,6 +112,6 @@ export class MapScene implements Scene {
         ui.image('assets/ui/icon_star.png', x - 2, ry - 2);
         ui.text(`${data.dealer.name} is here!`, x + 16, ry + 2, C.gold);
       }
-    });
+    }, [{ label: 'Go', onClick: go }]);
   }
 }

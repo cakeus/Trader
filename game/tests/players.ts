@@ -8,10 +8,12 @@
  * Dealer deals to buy (and in what order), and which goods to favour.
  */
 import { areaView } from '../src/game/area';
-import { buyDealerDeal, dealFromKey, dealGood, isUniversal } from '../src/game/dealer';
+import { buyDealerDeal, dealCost, dealFromKey, dealGood, isUniversal, owns } from '../src/game/dealer';
+import { CONFIG } from '../src/game/config';
+import { eventOn } from '../src/game/events';
 import { sellerPrice, tierPrice, tierWeights } from '../src/game/economy';
-import { actorsAt, buy, maxSell, offer, sell, visit } from '../src/game/run';
-import { type DealerDeal, type RunState, TIERS } from '../src/game/types';
+import { actorsAt, buy, buyPrice, countOf, freeSlots, maxBuy, maxSell, offer, sell, visit } from '../src/game/run';
+import { type DealerDeal, type RunState, type SingleKind, TIERS } from '../src/game/types';
 import { loadTestData } from './helpers';
 
 export const data = loadTestData();
@@ -20,7 +22,7 @@ export const data = loadTestData();
 export const SIM = {
   bought: {
     bag: 0, discount: 0, luck: 0, stock: 0, buyerStock: 0,
-    discountAll: 0, stockAll: 0, buyerStockAll: 0, luckAll: 0,
+    discountAll: 0, stockAll: 0, buyerStockAll: 0, luckAll: 0, dailyDiscount: 0, tip: 0, cantGetEnough: 0,
   } as Record<
     DealerDeal['kind'],
     number
@@ -73,6 +75,20 @@ export interface Profile {
   bias?: Bias;
   /** Never sell a unit for less than was paid for it, except on an unmet quota's due day. */
   noLoss?: boolean;
+  /** The stamp this profile is built around: the sims swap it into Nox's first offers until it's
+   *  bought (see forceStamp). */
+  force?: SingleKind;
+  /** Extra cash from selling `n` units of a good to one buyer in one go (on top of the price),
+   *  which the profile's buying and route choices try to set up. */
+  stackValue?: (n: number) => number;
+  /** Once stacking (see stackValue), hold a good until this many units can go to one buyer (see
+   *  wouldSell). */
+  holdStacks?: number;
+  /** Buys the same way when buyers are capped (the Rainstorm); every other profile then buys fewer,
+   *  pricier units (see tradeAt). */
+  ignoresRain?: boolean;
+  /** Spend the day's first buy (half price with the Daily Discount) on the unit that saves most. */
+  discountFirst?: boolean;
 }
 
 const noBias: Bias = () => 1;
@@ -117,10 +133,91 @@ export function focusGood(s: RunState): string | null {
   return top;
 }
 
+/** Sims: set RAIN=0 to have every profile ignore the Rainstorm's cap when buying. */
+const RAIN_AWARE = process.env.RAIN !== '0';
+
+/** The three stamps a focus profile picks one of. */
+const FOCUS_STAMPS: SingleKind[] = ['dailyDiscount', 'tip', 'cantGetEnough'];
+
+/** Sims: while the profile's forced stamp isn't owned, it's the first of Nox's offers whenever he
+ *  visits (in place of whatever was there; a duplicate is dropped). */
+export function forceStamp(s: RunState, profile: Profile): void {
+  const kind = profile.force;
+  if (!kind || !s.dealer || owns(s, { kind })) return;
+  const deal: DealerDeal = { kind };
+  const offers = s.dealer.offers.filter((o) => o.deal.kind !== kind);
+  s.dealer.offers = [{ deal, cost: dealCost(deal), sold: false }, ...offers].slice(0, CONFIG.dealer.offers);
+}
+
+/** The good a stacking profile is building up: the one it holds most of. */
+function stackGood(s: RunState): string | null {
+  let top: string | null = null;
+  for (const it of s.inventory) if (top === null || countOf(s, it.good) > countOf(s, top)) top = it.good;
+  return top;
+}
+
+/** Whether a profile sells `n` units of a good to a buyer now, rather than holding them for a
+ *  bigger stack: always, unless it holds stacks (holdStacks, once its stamp is owned). Then it sells
+ *  once the stack is big enough, when the bag is full, when the quota is due within a day and not
+ *  yet met, when it's short of cash to keep buying, or when the buyer is capped (the Rainstorm). */
+function wouldSell(s: RunState, profile: Profile, good: string, n: number, capped = false): boolean {
+  const hold = profile.holdStacks;
+  if (!hold || !stacking(s, profile) || n >= hold || freeSlots(s) === 0 || capped) return true;
+  if (!s.quota.met && s.day >= s.quota.dueDay - 1) return true;
+  const paid = s.inventory.find((it) => it.good === good)?.paid ?? 0;
+  return s.cash < paid;
+}
+
+/** Whether a profile's stackValue applies yet (once it owns its stamp). */
+function stacking(s: RunState, profile: Profile): boolean {
+  return !!profile.stackValue && (!profile.force || owns(s, { kind: profile.force }));
+}
+
+/** Expected value of `loc` for a focus profile: the usual score, the stamp's extra cash from
+ *  selling what's held there, the Daily Discount's best saving, and the Dealer (always while its
+ *  stamp is unowned, otherwise with 3+ stars, like the Dealer chaser). */
+function focusScore(s: RunState, loc: string, profile: Profile): number {
+  const { actors } = areaView(data, s.area);
+  let v = score(s, loc);
+  let saving = 0;
+  for (const a of actorsAt(s, loc)) {
+    const def = actors[a];
+    for (const g of def.goods) {
+      if (def.role === 'buyer' && stacking(s, profile)) {
+        const n = countOf(s, g.good);
+        // a buyer it would hold back from is worth nothing today
+        if (wouldSell(s, profile, g.good, n, offer(s, a, g.good).capped)) v += profile.stackValue!(n);
+        else v -= n * expectedPrice(s, a, g.good);
+      }
+      if (def.role === 'supplier' && profile.discountFirst && owns(s, { kind: 'dailyDiscount' })) {
+        const o = offer(s, a, g.good);
+        if (resale(s, g.good) > buyPrice(s, o)) saving = Math.max(saving, o.price - buyPrice(s, o));
+      }
+    }
+  }
+  v += saving;
+  const wanted = profile.force && !owns(s, { kind: profile.force }) ? 100 : s.stars >= 3 ? 10 : 0;
+  return v + (s.dealer?.locationId === loc ? wanted : 0);
+}
+
+/** A profile built around one of the new stamps: it's forced into Nox's first visit and bought,
+ *  the other two are never bought, and other deals are bought like the Dealer chaser. */
+function focus(kind: SingleKind, name: string, about: string, extra: Partial<Profile>): Profile {
+  const profile: Profile = {
+    name,
+    about,
+    pick: (s) => best(s, (l) => focusScore(s, l, profile)),
+    dealRank: (_, d) => (d.kind === kind ? 100 : FOCUS_STAMPS.includes(d.kind as SingleKind) ? null : DEAL_VALUE[d.kind]),
+    force: kind,
+    ...extra,
+  };
+  return profile;
+}
+
 /** Rough value of each deal kind for a player who wants them all (bag slots scale best). */
 const DEAL_VALUE: Record<DealerDeal['kind'], number> = {
   bag: 5, luckAll: 4, discountAll: 4, stockAll: 3, buyerStockAll: 3, discount: 2, luck: 1.5, stock: 1,
-  buyerStock: 1,
+  buyerStock: 1, dailyDiscount: 3, tip: 3, cantGetEnough: 3,
 };
 
 export const PROFILES: Record<string, Profile> = {
@@ -181,6 +278,26 @@ export const PROFILES: Record<string, Profile> = {
     dealRank: (_, d) => (d.kind === 'bag' ? 1 : 0),
     noLoss: true,
   },
+  discountFocus: focus('dailyDiscount', 'Discount focus',
+    'Built around Daily Discount: spends the half-price first buy on the unit that saves most.',
+    { discountFirst: true }),
+  tipFocus: focus('tip', 'Tip focus',
+    'Built around Tip Jar: buys goods in pairs and heads for buyers it can sell 2 to.',
+    { stackValue: (n) => (n >= CONFIG.dealer.tipAfter ? CONFIG.dealer.tip : 0) }),
+  moreFocus: focus('cantGetEnough', 'CGE focus',
+    "Built around Can't Get Enough: stacks one good and sells the whole stack to one buyer.",
+    {
+      stackValue: (n) => (CONFIG.dealer.cantGetEnoughStep * n * (n - 1)) / 2,
+      // holding back small stacks (HOLD=3 in the sim) loses: stacks are limited by seller stock and
+      // bag size, not by selling early, so holding only delays cash (day 35: 55% off, 48% at 3, 41% at 4)
+      holdStacks: Number(process.env.HOLD ?? 0),
+      // restock the good it's stacking first
+      bias: (s, good) => (owns(s, { kind: 'cantGetEnough' }) && good === stackGood(s) ? 3 : 1),
+      // bigger stacks need more stock to buy: the stock stamps come right after bag upgrades
+      dealRank: (_, d) =>
+        d.kind === 'cantGetEnough' ? 100 : FOCUS_STAMPS.includes(d.kind as SingleKind) ? null
+          : d.kind === 'stock' || d.kind === 'stockAll' ? 4.5 : DEAL_VALUE[d.kind],
+    }),
   chaser: {
     name: 'Dealer chaser',
     about: 'Heads to the Dealer whenever it has 3+ stars, buys the best-value deals first.',
@@ -219,20 +336,38 @@ export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.im
     .flatMap((a) => defs[a].goods.map((g) => ({ a, good: g.good, price: offer(s, a, g.good).price })))
     .sort((x, y) => y.price - x.price);
   const desperate = !s.quota.met && s.day >= s.quota.dueDay;
-  for (const t of sales) sell(data, s, t.a, t.good, profile.noLoss && !desperate ? lossFree(s, t.good, t.price) : maxSell(s, t.a, t.good));
+  for (const t of sales) {
+    if (!wouldSell(s, profile, t.good, maxSell(s, t.a, t.good), offer(s, t.a, t.good).capped)) continue;
+    sell(data, s, t.a, t.good, profile.noLoss && !desperate ? lossFree(s, t.good, t.price) : maxSell(s, t.a, t.good));
+  }
   if (s.day >= s.quota.dueDay) return;
-  // buy: best expected margin first (scaled by the profile's bias)
+  const sellers = actors.filter((a) => defs[a].role === 'supplier').flatMap((a) => defs[a].goods.map((g) => ({ a, good: g.good })));
+  // the Daily Discount: the first unit goes to whatever saves the most (and still turns a profit)
+  if (profile.discountFirst && owns(s, { kind: 'dailyDiscount' }) && !s.boughtToday) {
+    const first = sellers
+      .filter((t) => maxBuy(s, t.a, t.good) > 0 && resale(s, t.good) > buyPrice(s, offer(s, t.a, t.good)))
+      .sort((x, y) => offer(s, y.a, y.good).price - offer(s, x.a, x.good).price)[0];
+    if (first) buy(data, s, first.a, first.good, 1);
+  }
+  // when buyers will be capped from tomorrow (the Rainstorm), a buyer takes only `limit` a day, so
+  // buy fewer, pricier units: rank by profit per unit instead of per dollar, and hold at most
+  // `limit` of any good
+  const limit = profile.ignoresRain || !RAIN_AWARE ? undefined : eventOn(data, s.area, s.day + 1)?.buyerLimit;
+  // buy: best expected margin first (scaled by the profile's bias, plus any stack value the
+  // profile's stamp adds for holding more of the same good)
   const bias = profile.bias ?? noBias;
-  const buys = actors
-    .filter((a) => defs[a].role === 'supplier')
-    .flatMap((a) =>
-      defs[a].goods.map((g) => {
-        const p = offer(s, a, g.good).price;
-        const r = resale(s, g.good);
-        return { a, good: g.good, margin: r - p, ratio: (bias(s, g.good) * r) / p };
-      }),
-    )
+  const stack = stacking(s, profile) ? profile.stackValue : undefined;
+  const room = (good: string) => (limit === undefined ? 99 : Math.max(0, limit - countOf(s, good)));
+  const buys = sellers
+    .map(({ a, good }) => {
+      const p = offer(s, a, good).price;
+      const held = countOf(s, good);
+      const k = Math.max(1, Math.min(maxBuy(s, a, good), freeSlots(s), room(good)));
+      const extra = stack ? (stack(held + k) - stack(held)) / k : 0;
+      const r = resale(s, good) + extra;
+      return { a, good, margin: r - p, ratio: (bias(s, good) * r) / p, value: bias(s, good) * (r - p) };
+    })
     .filter((t) => t.margin > 0)
-    .sort((x, y) => y.ratio - x.ratio);
-  for (const t of buys) buy(data, s, t.a, t.good, 99);
+    .sort((x, y) => (limit === undefined ? y.ratio - x.ratio : y.value - x.value));
+  for (const t of buys) buy(data, s, t.a, t.good, room(t.good));
 }

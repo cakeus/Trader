@@ -8,7 +8,7 @@ import { drawStamp, STAMP_SIZE } from './stampArt';
 const COLS = 6;
 const PITCH = STAMP_SIZE + 6;
 
-/** The stamp collection: every stamp bought from Nox this run, hover one for what it does. */
+/** The stamp collection: every stamp bought from Nox this run, hover (or tap) one for what it does. */
 export class StampsDialog implements Scene {
   constructor(private app: App) {}
 
@@ -40,7 +40,7 @@ export class StampsDialog implements Scene {
       const x = gx + (i % COLS) * PITCH;
       const y = gy + Math.floor(i / COLS) * PITCH;
       const hit: Rect = { x, y, w: STAMP_SIZE, h: STAMP_SIZE };
-      const hot = ui.hover(hit);
+      const hot = ui.focus(`stamp:${i}`, hit);
       drawStamp(app, ui, deal, x, y - (hot ? 2 : 0));
       if (hot) this.tooltip(ui, deal);
     });

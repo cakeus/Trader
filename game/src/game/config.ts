@@ -23,8 +23,9 @@ export const CONFIG = {
   /** Cards per deck cycle: about one quota's worth for each role. At 10, a 10% weight is exactly
    *  one card per cycle; a 25% weight comes out as 2 or 3. */
   deckSize: 10,
-  /** Chance of each base daily stock for a seller's good (stock deals add on top). */
-  stockWeights: { 1: 0.5, 2: 0.3, 3: 0.2 } as Record<number, number>,
+  /** A seller's base daily stock by its good's category: [min, max], rolled evenly (stock deals
+   *  add on top). */
+  stockRange: { food: [3, 3], treasure: [2, 3], music: [1, 3], tools: [1, 1] } as Record<string, [number, number]>,
   /** Each quota is this many times the previous one (2 = doubling), rounded to $5. */
   quotaGrowth: 1.75,
   /** The star Dealer. */
@@ -42,28 +43,36 @@ export const CONFIG = {
     cost: {
       bag: 3, discount: 3, luck: 3, stock: 3, buyerStock: 3,
       discountAll: 6, stockAll: 6, buyerStockAll: 6, luckAll: 8,
+      dailyDiscount: 5, tip: 5, cantGetEnough: 5,
     } as Record<DealerDeal['kind'], number>,
-    /** Star cost of bag upgrades I, II, III; each unlocks after the one before. */
-    bagCosts: [3, 4, 5],
+    /** Star cost of bag upgrades I, II, III, IV; each unlocks after the one before. */
+    bagCosts: [3, 5, 7, 9],
+    /** Bag slots added by bag upgrades I, II, III, IV (8 in all). */
+    bagSlots: [2, 2, 2, 2],
     /** How many ranks the ranked deals have; only the next rank is ever offered. */
-    ranks: { bag: 3, stockAll: 3, buyerStockAll: 3, luckAll: 3 } as Record<RankedKind, number>,
-    /** Relative chance of each deal kind being picked for an offer slot (default 1). The good (or the
-     *  next rank) is then picked evenly within the kind. */
-    weight: {} as Partial<Record<DealerDeal['kind'], number>>,
+    ranks: { bag: 4, stockAll: 1, buyerStockAll: 3, luckAll: 3 } as Record<RankedKind, number>,
     /** A luck deal adds this to the great and amazing weights of every seller and buyer of its good
      *  (taking both from bad, then good). */
     luckStep: 0.05,
-    /** A stock deal adds this to the daily stock of every seller of its good. */
-    stockStep: 2,
+    /** A stock deal adds this (by category) to the daily stock of every seller of its good. */
+    stockStep: { food: 3, treasure: 2, music: 2, tools: 1 } as Record<string, number>,
     /** A buyerStock deal adds this to the daily demand of every buyer of its good. */
     buyerStockStep: 2,
-    /** The all-goods deals, per rank: $ off every seller, extra stock for every seller, and extra
-     *  demand for every buyer. They stack with the per-good deals. */
+    /** The all-goods deals, per rank: $ off every seller and extra demand for every buyer. They
+     *  stack with the per-good deals. */
     discountAll: 1,
-    stockAll: 1,
     buyerStockAll: 1,
+    /** Overflowing Supply multiplies every seller's daily stock by this (per rank), after the
+     *  per-category stock deals are added, so it does the most for food. */
+    stockAll: 2,
     /** The all-goods luck deal, per rank: added to every seller's and buyer's great and amazing
      *  weights. Stacks with luck. */
     luckAll: 0.05,
+    /** Tip Jar: a buyer pays this extra once you've sold it `tipAfter` goods in a day
+     *  (once per buyer per day). */
+    tip: 5,
+    tipAfter: 2,
+    /** Can't Get Enough: a buyer's price goes up this much after every unit sold to it (for the day). */
+    cantGetEnoughStep: 1,
   },
 };

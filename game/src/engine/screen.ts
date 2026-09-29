@@ -26,6 +26,8 @@ export function createScreen(canvas: HTMLCanvasElement): Screen {
     canvas.style.height = `${H * scale}px`;
   };
   addEventListener('resize', fit);
+  // mobile browsers resize the visual viewport as their toolbars slide in and out
+  visualViewport?.addEventListener('resize', fit);
   fit();
 
   return {

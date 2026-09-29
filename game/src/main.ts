@@ -33,6 +33,11 @@ async function boot(): Promise<void> {
   const input = new Input();
   const sfx = new Sfx();
   input.attach(screen, () => sfx.unlock());
+  const syncHidden = () => (sfx.hidden = document.hidden);
+  document.addEventListener('visibilitychange', syncHidden);
+  window.addEventListener('pagehide', () => (sfx.hidden = true));
+  window.addEventListener('pageshow', syncHidden);
+  syncHidden();
   const ui = new Ui(screen.ctx, font, assets, input, sfx);
   const app = new App(screen, ui, data, assets, input, sfx, loadSettings());
   app.goto(new MainMenu(app));

@@ -71,6 +71,8 @@ export class Sfx {
   private ctx: AudioContext | null = null;
   private _muted = false;
   private _musicMuted = false;
+  /** The page is in the background (music paused until it's back). */
+  private _hidden = false;
   /** The track that should be playing, and any still fading out. */
   private track: Track | null = null;
   private fading: Track[] = [];
@@ -131,13 +133,27 @@ export class Sfx {
     for (const t of this.tracks()) t.el.volume = Math.min(1, Math.max(0, t.level * MUSIC_VOLUME));
   }
 
+  /** Pause everything while the page is hidden (mobile browsers otherwise keep `<audio>` playing
+   *  in the background), and pick it back up when it returns. */
+  set hidden(h: boolean) {
+    if (this._hidden === h) return;
+    this._hidden = h;
+    for (const t of this.tracks()) {
+      if (h) t.el.pause();
+      else this.start(t);
+    }
+    if (!this.ctx) return;
+    if (h) void this.ctx.suspend();
+    else void this.ctx.resume();
+  }
+
   private tracks(): Track[] {
     return this.track ? [this.track, ...this.fading] : [...this.fading];
   }
 
   /** Play a track unless the music is off; browsers refuse before the first user gesture, so unlock retries. */
   private start(t: Track): void {
-    if (this._musicMuted || !t.el.paused) return;
+    if (this._musicMuted || this._hidden || !t.el.paused) return;
     t.el.play().catch(() => {});
   }
 
@@ -150,7 +166,7 @@ export class Sfx {
         return;
       }
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (this.ctx.state === 'suspended' && !this._hidden) void this.ctx.resume();
     if (this.track) this.start(this.track);
   }
 

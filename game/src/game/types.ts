@@ -23,6 +23,22 @@ export interface CategoryDef {
   name: string;
 }
 
+/** Animated weather drawn over the map and the locations. */
+export type Weather = 'snow' | 'rain';
+
+/** Something that happens in an area from `fromDay` until the run leaves it. */
+export interface AreaEvent {
+  id: string;
+  /** Title of the notice shown the first morning it's on. */
+  name: string;
+  blurb: string;
+  fromDay: number;
+  /** Replaces the area's weather while it lasts. */
+  weather?: Weather;
+  /** Every buyer takes at most this many units of its good a day. */
+  buyerLimit?: number;
+}
+
 /** A region with its own map, locations and goods. The run moves on to the next one on `fromDay`. */
 export interface AreaDef {
   id: string;
@@ -33,7 +49,9 @@ export interface AreaDef {
   music: string;
   fromDay: number;
   /** Animated weather drawn over the map. */
-  weather?: 'snow';
+  weather?: Weather;
+  /** Events that start partway through the stay (the latest one started is the one on). */
+  events?: AreaEvent[];
 }
 
 /** Deal tier rolled per actor/good each day. */
@@ -102,6 +120,11 @@ export interface Offer {
   price: number;
   /** Remaining stock (supplier) or remaining demand (buyer). */
   left: number;
+  /** A buyer whose demand today's event caps (at `left`), even with CONFIG.limitDemand off. */
+  capped?: boolean;
+  /** Units sold to this buyer today, and whether it has paid the Tip Jar stamp's tip. */
+  sold?: number;
+  tipped?: boolean;
 }
 
 export interface Quota {
@@ -130,6 +153,13 @@ export interface RunStats {
   sold: number;
   quotasMet: number;
   starsEarned: number;
+  /** Total sale price minus what was paid, over every unit sold (optional: older saves). */
+  profit?: number;
+  /** What was lost on units sold below what was paid. */
+  losses?: number;
+  /** Sales today, and the most made on a single day. */
+  daySales?: number;
+  bestDaySales?: number;
 }
 
 export interface BagItem {
@@ -142,12 +172,14 @@ export interface BagItem {
 export type RankedKind = 'bag' | 'stockAll' | 'buyerStockAll' | 'luckAll';
 /** Deal kinds that come once per category (they apply to that category's good in every area). */
 export type CategoryKind = 'discount' | 'stock' | 'buyerStock' | 'luck';
+/** Deal kinds that come once, with no rank or category. */
+export type SingleKind = 'discountAll' | 'dailyDiscount' | 'tip' | 'cantGetEnough';
 
 /** One upgrade (stamp) the Dealer can sell. */
 export type DealerDeal =
   | { kind: RankedKind; tier: number }
   | { kind: CategoryKind; category: string }
-  | { kind: 'discountAll' };
+  | { kind: SingleKind };
 
 /** One of the Dealer's offers today. */
 export interface DealerOffer {
@@ -173,11 +205,11 @@ export interface Perks {
   stock: Record<string, number>;
   /** Extra daily demand for every buyer, per category. */
   buyerStock: Record<string, number>;
-  /** Dollars off every seller price, extra daily stock for every seller, and extra daily demand
-   *  for every buyer (the all-goods deals). */
+  /** Dollars off every seller price and extra daily demand for every buyer (the all-goods deals). */
   discountAll: number;
-  stockAll: number;
   buyerStockAll: number;
+  /** Overflowing Supply ranks owned: each multiplies sellers' stock by CONFIG.dealer.stockAll. */
+  stockAll: number;
   /** Added to every seller's and buyer's great and amazing weights (the all-goods luck deal). */
   luckAll: number;
   /** Keys (`dealKey`) of every deal bought this run; each deal can be bought only once. */
@@ -218,11 +250,19 @@ export interface RunState {
   perks: Perks;
   /** Where the Dealer is today, or null if he isn't around. */
   dealer: DealerVisit | null;
+  /** Has anything been bought today? (The Daily Discount stamp halves the first buy.) Optional so
+   *  older saves still load. */
+  boughtToday?: boolean;
   /** Has the Dealer made his (guaranteed) first visit yet? */
   dealerSeen: boolean;
   /** Set when a quota is met: the Dealer's next visit includes a deal costing at most
    *  CONFIG.dealer.cheapAfterQuota. Optional so saves from before it still load. */
   dealerCheapOwed?: boolean;
+  /** The Dealer's stamp deck: the cards not yet drawn, in order (see rollDealer). Optional so
+   *  older saves still load (they start with a fresh shuffle). */
+  stampDeck?: string[];
+  /** Ids of the area events whose notice has been shown. Optional so older saves still load. */
+  eventsSeen?: string[];
   status: 'active' | 'failed';
 }
 

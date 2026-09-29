@@ -1,8 +1,8 @@
 import { rngFor } from '../engine/rng';
-import { areaFor, areaView } from './area';
+import { areaFor, areasInOrder, areaView } from './area';
 import { CONFIG } from './config';
 import { dealActors } from './deal';
-import { dealerBlock, rollDealer } from './dealer';
+import { dealerBlock, owns, rollDealer } from './dealer';
 import { deckCards, offerKey, rollMarket, sellerPrice } from './economy';
 import type { EndDayResult, GameData, Offer, Quota, RunState } from './types';
 
@@ -53,7 +53,7 @@ export function newRun(data: GameData, seed: number): RunState {
     visited: null,
     market: {},
     deck: { supplier: 0, buyer: 0 },
-    stats: { bought: 0, sold: 0, quotasMet: 0, starsEarned: 0 },
+    stats: { bought: 0, sold: 0, quotasMet: 0, starsEarned: 0, profit: 0, losses: 0, daySales: 0, bestDaySales: 0 },
     stars: 0,
     perks: {
       discounts: {}, luck: {}, stock: {}, buyerStock: {},
@@ -121,14 +121,16 @@ export function guaranteedGood(data: GameData, state: RunState): string | null {
   return best;
 }
 
-/** The lowest price any seller could charge today (its best tier, after the Dealer's discounts). */
+/** The lowest price any seller could charge today (its best tier, after the Dealer's discounts,
+ *  and halved while the Daily Discount is unused). */
 function cheapestSellerPrice(data: GameData, state: RunState): number {
   data = areaView(data, state.area);
-  return Math.min(
+  const price = Math.min(
     ...Object.values(data.actors)
       .filter((a) => a.role === 'supplier')
       .flatMap((a) => a.goods.map((g) => sellerPrice(data, state, g.good, Math.min(...Object.values(g.prices))))),
   );
+  return buyPrice(state, { tier: 'good', price, left: 0 });
 }
 
 /** The non-due-day guarantee: if the player can't buy anything (bag full, or not enough cash for
@@ -181,19 +183,31 @@ export function freeSlots(state: RunState): number {
   return state.capacity - state.inventory.length;
 }
 
+/** What the next unit bought from a seller's offer costs: with the Daily Discount stamp, the day's
+ *  first unit is half price (rounded up, min $1). */
+export function buyPrice(state: RunState, o: Offer): number {
+  return !state.boughtToday && owns(state, { kind: 'dailyDiscount' }) ? Math.max(1, Math.ceil(o.price / 2)) : o.price;
+}
+
 export type TradeBlock = 'soldOut' | 'noCash' | 'bagFull' | 'noneOwned' | 'noDemand' | null;
 
 export function buyBlock(state: RunState, actorId: string, goodId: string): TradeBlock {
   const o = offer(state, actorId, goodId);
   if (CONFIG.limitStock && o.left <= 0) return 'soldOut';
   if (freeSlots(state) <= 0) return 'bagFull';
-  if (state.cash < o.price) return 'noCash';
+  if (state.cash < buyPrice(state, o)) return 'noCash';
   return null;
+}
+
+/** Whether a buyer's demand limits sales today: always with CONFIG.limitDemand, otherwise only
+ *  when today's event caps it. */
+export function demandApplies(o: Offer): boolean {
+  return CONFIG.limitDemand || !!o.capped;
 }
 
 export function sellBlock(state: RunState, actorId: string, goodId: string): TradeBlock {
   const o = offer(state, actorId, goodId);
-  if (CONFIG.limitDemand && o.left <= 0) return 'noDemand';
+  if (demandApplies(o) && o.left <= 0) return 'noDemand';
   if (countOf(state, goodId) <= 0) return 'noneOwned';
   return null;
 }
@@ -201,13 +215,16 @@ export function sellBlock(state: RunState, actorId: string, goodId: string): Tra
 export function maxBuy(state: RunState, actorId: string, goodId: string): number {
   const o = offer(state, actorId, goodId);
   if (o.price <= 0) return 0;
-  const n = Math.min(freeSlots(state), Math.floor(state.cash / o.price));
+  const first = buyPrice(state, o);
+  const afford = state.cash < first ? 0 : 1 + Math.floor((state.cash - first) / o.price);
+  const n = Math.min(freeSlots(state), afford);
   return Math.max(0, CONFIG.limitStock ? Math.min(n, o.left) : n);
 }
 
 export function maxSell(state: RunState, actorId: string, goodId: string): number {
   const n = countOf(state, goodId);
-  return Math.max(0, CONFIG.limitDemand ? Math.min(n, offer(state, actorId, goodId).left) : n);
+  const o = offer(state, actorId, goodId);
+  return Math.max(0, demandApplies(o) ? Math.min(n, o.left) : n);
 }
 
 /** Whether there's anything left to do at a location today: a good you can buy, a good you can
@@ -229,24 +246,54 @@ export function buy(data: GameData, state: RunState, actorId: string, goodId: st
   const n = Math.min(qty, maxBuy(state, actorId, goodId));
   if (n <= 0) return 0;
   const o = offer(state, actorId, goodId);
-  for (let i = 0; i < n; i++) state.inventory.push({ good: goodId, paid: o.price, day: state.day });
+  for (let i = 0; i < n; i++) {
+    const paid = buyPrice(state, o);
+    state.inventory.push({ good: goodId, paid, day: state.day });
+    state.cash -= paid;
+    state.boughtToday = true;
+  }
   if (CONFIG.limitStock) o.left -= n;
-  state.cash -= n * o.price;
   state.stats.bought += n;
   return n;
 }
 
-/** Sell up to `qty` units (oldest first); returns how many were sold. */
+/** Sell up to `qty` units (oldest first); returns how many were sold. With the Tip Jar
+ *  stamp, a buyer adds CONFIG.dealer.tip once it has bought tipAfter units today. With Can't Get
+ *  Enough, its price goes up CONFIG.dealer.cantGetEnoughStep after every unit (for the rest of the day). */
 export function sell(data: GameData, state: RunState, actorId: string, goodId: string, qty = 1): number {
   if (data.actors[actorId]?.role !== 'buyer') return 0;
   const n = Math.min(qty, maxSell(state, actorId, goodId));
   const o = offer(state, actorId, goodId);
-  for (let i = 0; i < n; i++) state.inventory.splice(state.inventory.findIndex((it) => it.good === goodId), 1);
-  if (CONFIG.limitDemand) o.left -= n;
-  state.cash += n * o.price;
-  state.stats.sold += n;
+  const rising = owns(state, { kind: 'cantGetEnough' });
+  for (let i = 0; i < n; i++) {
+    const [it] = state.inventory.splice(state.inventory.findIndex((it) => it.good === goodId), 1);
+    recordSale(state, it.paid, o.price);
+    state.cash += o.price;
+    if (rising) o.price += CONFIG.dealer.cantGetEnoughStep;
+  }
+  if (demandApplies(o)) o.left -= n;
+  o.sold = (o.sold ?? 0) + n;
+  const { tip, tipAfter } = CONFIG.dealer;
+  if (!o.tipped && o.sold >= tipAfter && owns(state, { kind: 'tip' })) {
+    o.tipped = true;
+    state.cash += tip;
+    const st = state.stats;
+    st.profit = (st.profit ?? 0) + tip;
+    st.daySales = (st.daySales ?? 0) + tip;
+    st.bestDaySales = Math.max(st.bestDaySales ?? 0, st.daySales);
+  }
   updateQuota(state);
   return n;
+}
+
+/** Count one unit sold at `price` (bought for `paid`) in the run stats. */
+function recordSale(state: RunState, paid: number, price: number): void {
+  const s = state.stats;
+  s.sold++;
+  s.profit = (s.profit ?? 0) + price - paid;
+  s.losses = (s.losses ?? 0) + Math.max(0, paid - price);
+  s.daySales = (s.daySales ?? 0) + price;
+  s.bestDaySales = Math.max(s.bestDaySales ?? 0, s.daySales);
 }
 
 /** Latch the quota as met once cash reaches it, awarding its stars plus the early bonus.
@@ -295,7 +342,7 @@ export function buyoutOffer(data: GameData, state: RunState): number | null {
 export function takeBuyout(data: GameData, state: RunState): number {
   const total = buyoutOffer(data, state);
   if (total === null) return 0;
-  state.stats.sold += state.inventory.length;
+  for (const it of state.inventory) recordSale(state, it.paid, buyoutPrice(data, it.good));
   state.inventory = [];
   state.cash += total;
   updateQuota(state);
@@ -320,10 +367,14 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
     state.deck = { supplier: 0, buyer: 0 }; // a fresh tier deck for each quota
     result = 'quotaPassed';
   }
+  // only ever forward (a debug jump can put the run ahead of its day's area)
   const next = areaFor(data, state.day + 1);
-  if (next !== state.area) moveArea(data, state, next);
+  const order = areasInOrder(data).map((a) => a.id);
+  if (order.indexOf(next) > order.indexOf(state.area)) moveArea(data, state, next);
   state.day++;
   state.visited = null;
+  state.boughtToday = false;
+  state.stats.daySales = 0;
   startDay(data, state);
   updateQuota(state);
   return result;
@@ -360,6 +411,25 @@ export function debugSetQuotaMet(state: RunState, met: boolean): void {
     delete q.starsAwarded;
     delete q.earlyBonus;
   }
+}
+
+/** Debug: the area after the current one, or null in the last area. */
+export function debugNextArea(data: GameData, state: RunState): string | null {
+  const areas = areasInOrder(data);
+  const i = areas.findIndex((a) => a.id === state.area);
+  return areas[i + 1]?.id ?? null;
+}
+
+/** Debug: move to the next area today, without touching the day or quota. The bag is bought
+ *  back at what was paid, with no arrival screen, and today is re-dealt there. */
+export function debugGotoNextArea(data: GameData, state: RunState): void {
+  const next = debugNextArea(data, state);
+  if (!next) return;
+  moveArea(data, state, next);
+  state.moved = null;
+  state.visited = null;
+  startDay(data, state);
+  updateQuota(state);
 }
 
 /** Debug: the day "advance" goes to: the current quota's due day, or the next one's when it's

@@ -10,13 +10,15 @@
  *   DISABLED=discount npm run sim       # stamp kinds Nox won't offer (empty = all on)
  *   DECK=0 npm run sim                  # roll deal tiers independently instead of from the deck
  *   WEEK1BAD=0.2 npm run sim            # bad buyer weight during the first quota (the rest is good)
+ *   HOLD=3 npm run sim                  # CGE focus holds a good until it can sell 3 to one buyer
+ *   RAIN=0 npm run sim                  # profiles ignore the Rainstorm's buyer cap when buying
  */
 import { describe, expect, it } from 'vitest';
 import { rngFor } from '../src/engine/rng';
 import { CONFIG } from '../src/game/config';
 import { endDay, newRun, QUOTA_DAYS, quotaFor, takeBuyout } from '../src/game/run';
 import type { DealerDeal } from '../src/game/types';
-import { data, PROFILES, type Profile, random, SIM, tradeAt } from './players';
+import { data, forceStamp, PROFILES, type Profile, random, SIM, tradeAt } from './players';
 
 const env = (k: string) => (typeof process !== 'undefined' ? process.env[k] : undefined);
 const RUNS = Number(env('RUNS') ?? 500);
@@ -40,21 +42,49 @@ interface Summary {
   firstMet: number[];
   /** Cash after day 7's trading, per run. */
   day7: number[];
+  /** The bag after each day's trading, per week (index = week − 1), over every run-day played. */
+  bag: BagStats[];
+}
+
+/** Min / max / sum of the units in the bag and what was paid for them, over `n` run-days. */
+interface BagStats {
+  n: number;
+  items: { min: number; max: number; sum: number };
+  value: { min: number; max: number; sum: number };
+}
+
+const newBagStats = (): BagStats => ({
+  n: 0,
+  items: { min: Infinity, max: -Infinity, sum: 0 },
+  value: { min: Infinity, max: -Infinity, sum: 0 },
+});
+
+function addTo(m: { min: number; max: number; sum: number }, x: number): void {
+  m.min = Math.min(m.min, x);
+  m.max = Math.max(m.max, x);
+  m.sum += x;
 }
 
 function simulate(profile: Profile): Summary {
   const quotas = Math.floor(DAYS / QUOTA_DAYS);
   for (const k of Object.keys(SIM.bought) as DealerDeal['kind'][]) SIM.bought[k] = 0;
-  const sum: Summary = { alive: Array(quotas).fill(0), lastDay: 0, stars: 0, spent: 0, cash: 0, days: 0, deals: { ...SIM.bought }, firstMet: Array(QUOTA_DAYS + 1).fill(0), day7: [] };
+  const sum: Summary = { alive: Array(quotas).fill(0), lastDay: 0, stars: 0, spent: 0, cash: 0, days: 0, deals: { ...SIM.bought }, firstMet: Array(QUOTA_DAYS + 1).fill(0), day7: [],
+    bag: Array.from({ length: Math.ceil(DAYS / QUOTA_DAYS) }, newBagStats) };
   for (let seed = 1; seed <= RUNS; seed++) {
     const s = newRun(data, seed);
     const r = rngFor(seed, 'sim');
     let firstDay = 0;
     while (s.day <= DAYS) {
+      forceStamp(s, profile);
       tradeAt(s, profile.pick(s, () => r.next()), profile);
       takeBuyout(data, s); // only offered on an unmet quota's due day, and turning it down fails the run
       if (!firstDay && s.quota.index === 0 && s.quota.met) firstDay = s.day;
       if (s.day === QUOTA_DAYS) sum.day7.push(s.cash);
+      // the bag after the day's trading (before endDay, which empties it on an area move)
+      const week = sum.bag[Math.floor((s.day - 1) / QUOTA_DAYS)];
+      week.n++;
+      addTo(week.items, s.inventory.length);
+      addTo(week.value, s.inventory.reduce((v, it) => v + it.paid, 0));
       sum.cash += s.cash;
       sum.days++;
       if (endDay(data, s) === 'failed') break;
@@ -69,7 +99,9 @@ function simulate(profile: Profile): Summary {
   return sum;
 }
 
-const RANDOM: Profile = { ...PROFILES.impulse, name: 'Random', about: 'Random location, impulse deals.', pick: random };
+const sum0 = (bags: [string, BagStats[]][]) => bags[0]?.[1] ?? [];
+
+const RANDOM: Profile = { ...PROFILES.impulse, name: 'Random', about: 'Random location, impulse deals.', pick: random, ignoresRain: true };
 
 describe('balance: long run', () => {
   it('reports survival after each quota for every profile (log only)', () => {
@@ -94,10 +126,12 @@ describe('balance: long run', () => {
       );
       const firstMet: [string, number[]][] = [];
       const day7: [string, number[]][] = [];
+      const bags: [string, BagStats[]][] = [];
       for (const p of profiles) {
         const s = simulate(p);
         firstMet.push([p.name, s.firstMet]);
         day7.push([p.name, s.day7]);
+        bags.push([p.name, s.bag]);
         const cols = s.alive.map((n) => `${((100 * n) / RUNS).toFixed(1)}%`.padStart(7)).join(' | ');
         const d = s.deals;
         console.log(
@@ -138,6 +172,19 @@ cash after day ${QUOTA_DAYS}'s trading (runs that got there): p10 / p25 / p50 / 
         spread.set(line, [...(spread.get(line) ?? []), name]);
       }
       for (const [line, names] of spread) console.log(`  ${line}   ${names.join(', ')}`);
+      // what players carry overnight, by week: units in the bag and what was paid for them
+      for (const [what, key, $] of [['units in the bag', 'items', ''], ['value in the bag (what was paid)', 'value', '$']] as const) {
+        console.log(`
+${what} after each day's trading, by week: avg (min–max), over the run-days played that week`);
+        console.log('profile        | ' + sum0(bags).map((_, w) => `days ${w * QUOTA_DAYS + 1}–${(w + 1) * QUOTA_DAYS}`.padEnd(15)).join(' | '));
+        for (const [name, weeks] of bags) {
+          const cells = weeks.map((b) => {
+            const m = b[key];
+            return (b.n ? `${$}${(m.sum / b.n).toFixed(1)} (${$}${m.min}–${$}${m.max})` : '-').padEnd(15);
+          });
+          console.log(`${name.padEnd(14)} | ${cells.join(' | ')}`);
+        }
+      }
     }
     CONFIG.tierDeck = saved.deck;
     CONFIG.firstQuotaBuyerDealWeights = saved.week1;

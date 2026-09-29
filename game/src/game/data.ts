@@ -30,6 +30,13 @@ export function buildData(
     const slots = here.reduce((sum, l) => sum + l.actorSlots, 0);
     if (here.length === 0) errors.push(`area ${area.id}: no locations`);
     if (slots > cast) errors.push(`area ${area.id}: only ${cast} actors for ${slots} daily slots`);
+    // events start while the run is still here, after the area's first day
+    const next = Math.min(Infinity, ...areas.filter((a) => a.fromDay > area.fromDay).map((a) => a.fromDay));
+    for (const e of area.events ?? []) {
+      if (e.fromDay < area.fromDay || e.fromDay >= next) errors.push(`event ${e.id}: day ${e.fromDay} is outside area ${area.id}`);
+      if (e.buyerLimit !== undefined && !(Number.isInteger(e.buyerLimit) && e.buyerLimit >= 1))
+        errors.push(`event ${e.id}: buyerLimit must be a whole number >= 1`);
+    }
   }
   for (const g of goods) {
     if (!data.categories[g.category]) errors.push(`good ${g.id}: unknown category ${g.category}`);

@@ -2,7 +2,7 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
-import { buy, buyBlock, countOf, maxBuy, maxSell, offer, sell, sellBlock, type TradeBlock } from '../game/run';
+import { buy, buyBlock, buyPrice, countOf, demandApplies, maxBuy, maxSell, offer, sell, sellBlock, type TradeBlock } from '../game/run';
 import { drawBag, drawPortrait } from './common';
 
 const REASON: Record<Exclude<TradeBlock, null>, string> = {
@@ -51,7 +51,7 @@ export class TradeDialog implements Scene {
       ui.nine(hot && !block ? 'row_hover' : 'row', row);
       ui.image(good.icon, row.x + 6, row.y + 6);
       ui.text(good.name, row.x + 46, row.y + 9, C.ink);
-      const qty = selling ? (CONFIG.limitStock ? `Stock: ${o.left}   ` : '') : CONFIG.limitDemand ? `Wants: ${o.left}   ` : '';
+      const qty = selling ? (CONFIG.limitStock ? `Stock: ${o.left}   ` : '') : demandApplies(o) ? `Wants: ${o.left}   ` : '';
       ui.text(`${qty}You have: ${countOf(run, ag.good)}`, row.x + 46, row.y + 24, C.inkSoft);
 
       const right = row.x + row.w - 10;
@@ -59,7 +59,7 @@ export class TradeDialog implements Scene {
         ui.text(REASON[block], right, row.y + 17, C.red, { align: 'right' });
       } else {
         const verb = selling ? 'Buy' : 'Sell';
-        ui.text(`${verb} $${o.price}`, right, row.y + 12, C.ink, { align: 'right', scale: 2 });
+        ui.text(`${verb} $${selling ? buyPrice(run, o) : o.price}`, right, row.y + 12, C.ink, { align: 'right', scale: 2 });
       }
 
       if (ui.clicked(row)) tradeWith(app, ui, actorId, ag.good);
@@ -78,8 +78,8 @@ export class TradeDialog implements Scene {
 
 }
 
-/** Trade one unit (shift: as many as possible) of `good` with an actor, with sfx and floaters. */
-export function tradeWith(app: App, ui: Ui, actorId: string, good: string): void {
+/** Trade one unit (`max`, by default shift: as many as possible) of `good` with an actor, with sfx and floaters. */
+export function tradeWith(app: App, ui: Ui, actorId: string, good: string, max = ui.shift): void {
   const run = app.run!;
   const selling = app.data.actors[actorId].role === 'supplier';
   const block = selling ? buyBlock(run, actorId, good) : sellBlock(run, actorId, good);
@@ -90,16 +90,20 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string): void
     ui.floater(REASON[block], mx, my - 12, C.redLight);
     return;
   }
-  const price = offer(run, actorId, good).price;
+  const o = offer(run, actorId, good);
   const wasMet = run.quota.met;
+  const cash = run.cash;
   if (selling) {
-    const n = buy(app.data, run, actorId, good, ui.shift ? maxBuy(run, actorId, good) : 1);
+    buy(app.data, run, actorId, good, max ? maxBuy(run, actorId, good) : 1);
     app.sfx.play('buy');
-    ui.floater(`-$${n * price}`, mx, my - 12, C.redLight);
+    ui.floater(`-$${cash - run.cash}`, mx, my - 12, C.redLight);
   } else {
-    const n = sell(app.data, run, actorId, good, ui.shift ? maxSell(run, actorId, good) : 1);
+    const tipped = o.tipped;
+    sell(app.data, run, actorId, good, max ? maxSell(run, actorId, good) : 1);
     app.sfx.play('sell');
-    ui.floater(`+$${n * price}`, mx, my - 12, C.gold);
+    const tip = o.tipped && !tipped ? CONFIG.dealer.tip : 0;
+    ui.floater(`+$${run.cash - cash - tip}`, mx, my - 12, C.gold);
+    if (tip) ui.floater(`+$${tip} tip!`, mx, my - 26, C.cyan);
   }
   if (!wasMet && run.quota.met) {
     app.sfx.play('quota');
@@ -109,11 +113,11 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string): void
 }
 
 /** Click-the-actor trading: pick the good to trade (buyers prefer one you actually hold). */
-export function quickTrade(app: App, ui: Ui, actorId: string): void {
+export function quickTrade(app: App, ui: Ui, actorId: string, max = ui.shift): void {
   const run = app.run!;
   const actor = app.view.actors[actorId];
   const goods = actor.goods.map((g) => g.good);
   const good =
     actor.role === 'buyer' ? (goods.find((g) => sellBlock(run, actorId, g) === null) ?? goods[0]) : goods[0];
-  if (good) tradeWith(app, ui, actorId, good);
+  if (good) tradeWith(app, ui, actorId, good, max);
 }

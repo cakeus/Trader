@@ -2,7 +2,7 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { daysLeft } from '../game/run';
-import type { ActorDef, Role } from '../game/types';
+import type { ActorDef, Role, Weather } from '../game/types';
 import { PauseMenu } from './pause';
 import { StampsDialog } from './stamps';
 
@@ -58,6 +58,66 @@ export function drawSnow(ui: Ui): void {
     ctx.fillRect(fx, fy, size, size);
   }
   ctx.globalAlpha = 1;
+}
+
+const RAIN_DROPS = 300;
+/** How far the drop count swings above and below `RAIN_DROPS` over time. */
+const RAIN_GUST = 0.25;
+const RAIN_SPLASHES = 36;
+
+/** A cheap hash of two numbers in 0..1. */
+function hash(i: number, k: number): number {
+  return Math.abs((Math.sin(i * 12.9898 + k * 78.233) * 43758.5453) % 1);
+}
+
+/** A stormy tint and slanted pixel rain, with little splashes on the ground. Stateless like
+ *  `drawSnow`: each drop's position is a function of its index and `ui.t`. */
+export function drawRain(ui: Ui): void {
+  const { ctx } = ui;
+  ui.dim(0.14, '40,52,84');
+  const gust = 0.6 * Math.sin((ui.t * Math.PI * 2) / 29) + 0.4 * Math.sin((ui.t * Math.PI * 2) / 11 + 0.9);
+  const count = RAIN_DROPS * (1 + RAIN_GUST * gust);
+  const span = H + 30;
+  ctx.fillStyle = '#dce8ff';
+  for (let i = 0; i < count; i++) {
+    const a = hash(i, 1), b = hash(i, 2), c = hash(i, 3);
+    // three depth layers: far drops are short, faint and slower
+    const layer = i % 3;
+    const segs = layer + 1; // 3px segments, each stepping 1px across
+    const speed = 250 + layer * 90 + c * 60;
+    const fall = (b * span + ui.t * speed) % span;
+    const y = Math.round(fall) - 10;
+    // the wind slants every drop 1px across per 3px down
+    const x = Math.round((((a * W + fall / 3) % W) + W) % W);
+    ctx.globalAlpha = (0.22 + layer * 0.18) * Math.min(1, count - i);
+    for (let j = 0; j < segs; j++) ctx.fillRect(x - j, y - 3 * j - 2, 1, 3);
+  }
+  // splashes: each flicks up at a fresh spot on the lower half of the screen once per cycle
+  for (let i = 0; i < RAIN_SPLASHES; i++) {
+    const period = 0.5 + hash(i, 4) * 0.7;
+    const cyc = ui.t / period + hash(i, 5);
+    const age = (cyc % 1) * period;
+    if (age > 0.14) continue;
+    const n = Math.floor(cyc);
+    const x = Math.round(hash(i, n + 6) * W);
+    const y = Math.round(H * 0.4 + hash(i, n + 7) * H * 0.6);
+    ctx.globalAlpha = 0.55 * (1 - age / 0.14);
+    if (age < 0.05) {
+      ctx.fillRect(x, y, 1, 1);
+    } else {
+      ctx.fillRect(x - 1, y - 1, 1, 1);
+      ctx.fillRect(x + 1, y - 1, 1, 1);
+      ctx.fillRect(x - 2, y, 1, 1);
+      ctx.fillRect(x + 2, y, 1, 1);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Draw an area's (or today's event's) weather, if any. */
+export function drawWeather(ui: Ui, weather: Weather | undefined): void {
+  if (weather === 'snow') drawSnow(ui);
+  else if (weather === 'rain') drawRain(ui);
 }
 
 export function drawPortrait(ui: Ui, actor: Pick<ActorDef, 'portrait' | 'name'> & { role?: Role }, x: number, y: number): void {
@@ -122,7 +182,8 @@ export function drawBag(app: App, ui: Ui, x: number, y: number): void {
   for (let i = 0; i < run.capacity; i++) {
     const r: Rect = { x: x + 6 + i * BAG_SLOT, y: y + 6, w: BAG_SLOT - 2, h: BAG_SLOT - 2 };
     const item = run.inventory[i];
-    ui.nine(item && ui.hover(r) ? 'row_hover' : 'row', r);
+    const hot = !!item && ui.focus(`bag:${i}`, r);
+    ui.nine(hot ? 'row_hover' : 'row', r);
     if (!item) {
       ui.ctx.fillStyle = 'rgba(74,46,62,0.12)';
       ui.ctx.fillRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6);
@@ -130,7 +191,7 @@ export function drawBag(app: App, ui: Ui, x: number, y: number): void {
     }
     const def = app.data.goods[item.good];
     ui.image(def.icon, r.x + 1, r.y + 1);
-    if (ui.hover(r)) {
+    if (hot) {
       const paid = `Paid $${item.paid} on Day ${item.day}`;
       const w2 = Math.max(ui.font.measure(def.name), ui.font.measure(paid)) + 16;
       ui.tooltip(w2, 36, (tx, ty) => {

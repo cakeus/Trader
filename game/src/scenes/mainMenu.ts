@@ -4,7 +4,8 @@ import { H, W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
 import { newRun } from '../game/run';
 import { loadRun } from '../game/save';
-import { Confirm, drawBackground } from './common';
+import { areasInOrder } from '../game/area';
+import { Confirm, drawBackground, drawSnow } from './common';
 import { LocationScene } from './location';
 import { MapScene } from './map';
 
@@ -32,11 +33,17 @@ export class MainMenu implements Scene {
   private acc = 0;
 
   constructor(private app: App) {
-    this.hasSave = loadRun() !== null;
+    const saved = loadRun();
+    this.hasSave = saved !== null;
+    // the saved run's area sets the scene (map, weather and music)
+    app.titleArea = saved?.area ?? null;
   }
 
   frame(ui: Ui): void {
-    drawBackground(ui, 'assets/bg/map.png');
+    const { data } = this.app;
+    const area = (this.app.titleArea && data.areas[this.app.titleArea]) || areasInOrder(data)[0];
+    drawBackground(ui, area.map);
+    if (area.weather === 'snow') drawSnow(ui);
     ui.dim(0.5);
 
     // goods bobbing around the title, nudged aside by the cursor

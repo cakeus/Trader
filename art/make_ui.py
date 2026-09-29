@@ -155,8 +155,77 @@ def flag(S):
     S.set(4, 1, hexc("#fffaf0"))
 
 
+def tag(S):
+    """A sale tag (hole on the left, string curling up) with a % on it."""
+    rows = [".....##########",
+            "....###########",
+            "...############",
+            "..#############",
+            ".##############",
+            "..#############",
+            "...############",
+            "....###########",
+            ".....##########"]
+    m = {(x, y + 4) for y, r in enumerate(rows) for x, c in enumerate(r) if c == "#"}
+    S.blob(m, [hexc("#ff9a8a"), hexc("#e8534e"), hexc("#b83a44")], hexc("#5a1a2a"), cuts=(-0.6, 0.6))
+    S.set(4, 8, hexc("#5a1a2a"))  # the hole
+    for (x, y) in ((4, 7), (3, 6), (3, 5), (3, 4), (4, 3), (5, 2), (6, 2)):
+        S.set(x, y, hexc("#8a6a4a"))
+    pct = ["##..#",
+           "##.#.",
+           "..#..",
+           ".#.##",
+           "#..##"]
+    for y, r in enumerate(pct):
+        for x, c in enumerate(r):
+            if c == "#":
+                S.set(x + 8, y + 6, hexc("#fffaf0"))
+
+
+def tip(S):
+    """A tip jar: a glass jar with coins inside and one dropping in."""
+    jar = rect(3, 6, 10, 9) | rect(4, 5, 8, 1)
+    S.fill(jar, hexc("#cfe8ec"))
+    S.fill({(x, y) for (x, y) in jar if x >= 10}, hexc("#a8cad4"))
+    coins = rect(4, 11, 8, 3) | rect(5, 10, 4, 1)
+    S.fill(coins, hexc("#ffd24a"))
+    S.fill({(x, 13) for x in range(4, 12)} | {(11, 12), (11, 11)}, hexc("#e8a22c"))
+    for (x, y) in ((5, 11), (8, 12), (6, 10)):
+        S.set(x, y, hexc("#fff0a0"))
+    S.fill(edge(jar), hexc("#4a6a7a"))
+    S.set(4, 7, hexc("#ffffff"))
+    S.set(4, 8, hexc("#ffffff"))
+    S.rows([".oooo.",
+            "oh###o",
+            "o###so",
+            ".oooo."], {"o": hexc("#7a4a14"), "#": hexc("#ffd24a"), "h": hexc("#fff0a0"),
+                        "s": hexc("#e8a22c")}, 5, 0)  # the coin dropping in, above the open jar
+
+
+def more(S):
+    """A coin with a green arrow rising beside it (prices going up)."""
+    m = ellipse(5.5, 10, 4.8, 4.8)
+    S.blob(m, [hexc("#fff0a0"), hexc("#ffd24a"), hexc("#e8a22c"), hexc("#c07a1c")],
+           hexc("#7a4a14"), cuts=(-0.4, 0.25, 0.7))
+    for p in edge(ellipse(5.5, 10, 2.4, 2.4)):
+        S.set(*p, hexc("#fff0a0") if p[0] + p[1] > 15.5 else hexc("#c07a1c"))
+    S.set(3, 7, hexc("#fffaf0"))
+    arrow = ["...#...",
+             "..###..",
+             ".#####.",
+             "#######",
+             "..###..",
+             "..###..",
+             "..###.."]
+    am = {(x + 8, y + 1) for y, r in enumerate(arrow) for x, c in enumerate(r) if c == "#"}
+    S.outline_around(am, hexc("#1e5a34"))
+    S.fill(am, hexc("#6cd06a"))
+    for (x, y) in ((11, 2), (10, 3), (9, 4), (10, 5), (10, 6), (10, 7)):
+        S.set(x, y, hexc("#c8f4a8"))
+
+
 for n, f in (("coin", coin), ("bag", bag), ("calendar", calendar), ("check", check),
-             ("pin", pin), ("star", star), ("flag", flag)):
+             ("pin", pin), ("star", star), ("flag", flag), ("tag", tag), ("tip", tip), ("more", more)):
     icon(n, f)
 
 # --- cursor (12x14 arrow) -------------------------------------------------------
@@ -185,7 +254,7 @@ S.save("cursor", "ui", scale=12, show=False)
 import os
 from pixelkit import ASSETS, PREVIEWS
 names = ["panel", "panel_dark", "btn", "btn_hover", "btn_down", "btn_disabled", "row", "row_hover",
-         "icon_coin", "icon_bag", "icon_calendar", "icon_check", "icon_pin", "icon_star", "icon_flag", "cursor"]
+         "icon_coin", "icon_bag", "icon_calendar", "icon_check", "icon_pin", "icon_star", "icon_flag", "icon_tag", "icon_tip", "icon_more", "cursor"]
 sheet = Image.new("RGBA", (len(names) * 28 + 4, 30), (120, 150, 130, 255))
 for i, n in enumerate(names):
     im = Image.open(os.path.join(ASSETS, "ui", n + ".png"))

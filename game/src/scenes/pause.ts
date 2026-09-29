@@ -1,11 +1,15 @@
 import type { App, Scene } from '../app';
+import { isMobile } from '../engine/device';
 import { seedLabel } from '../engine/rng';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
-import { debugAdvance, debugAdvanceDay, debugSetQuotaMet, updateQuota } from '../game/run';
+import {
+  debugAdvance, debugAdvanceDay, debugGotoNextArea, debugNextArea, debugSetQuotaMet, updateQuota,
+} from '../game/run';
 import { Confirm } from './common';
 import { MainMenu } from './mainMenu';
 import { showDayEnd } from './location';
+import { MapScene } from './map';
 
 const MENU_W = 240;
 const ROW = 34;
@@ -73,7 +77,7 @@ export class OptionsMenu extends SubMenu {
   frame(ui: Ui): void {
     const { app } = this;
     const s = app.settings;
-    const { x, w, y: top } = menuPanel(ui, 'Options', 4);
+    const { x, w, y: top } = menuPanel(ui, 'Options', isMobile ? 3 : 4);
     let y = top;
     const row = (label: string) => {
       const hit = ui.button({ x, y, w, h: 26 }, label);
@@ -90,7 +94,8 @@ export class OptionsMenu extends SubMenu {
       s.music = !s.music;
       app.applySettings();
     }
-    if (row(`Stretch to Fit: ${onOff(s.stretch)}`)) {
+    // phones always stretch (`applySettings`), so there's nothing to choose
+    if (!isMobile && row(`Stretch to Fit: ${onOff(s.stretch)}`)) {
       s.stretch = !s.stretch;
       app.applySettings();
     }
@@ -103,7 +108,7 @@ class DebugMenu extends SubMenu {
   frame(ui: Ui): void {
     const { app } = this;
     const run = app.run!;
-    const { x, w, y: top } = menuPanel(ui, 'Debug', 5, 0, 300);
+    const { x, w, y: top } = menuPanel(ui, 'Debug', 6, 0, 300);
     let y = top;
     const q = run.quota;
     if (ui.button({ x, y, w, h: 26 }, q.met ? 'Mark Quota Incomplete' : 'Mark Quota Complete')) {
@@ -117,6 +122,16 @@ class DebugMenu extends SubMenu {
     if (ui.button({ x, y, w, h: 26 }, label, { disabled: day === null })) {
       const prevArea = run.area;
       showDayEnd(app, debugAdvance(app.data, run), prevArea);
+      return;
+    }
+    y += ROW;
+
+    const next = debugNextArea(app.data, run);
+    const nextLabel = next ? `Go to ${app.data.areas[next].name}` : 'Next Area (none)';
+    if (ui.button({ x, y, w, h: 26 }, nextLabel, { disabled: next === null })) {
+      debugGotoNextArea(app.data, run);
+      app.save();
+      app.goto(new MapScene(app));
       return;
     }
     y += ROW;

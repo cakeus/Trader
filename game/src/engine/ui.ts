@@ -1,4 +1,5 @@
 import type { Assets } from './assets';
+import { isMobile } from './device';
 import type { Sfx } from './audio';
 import type { Font, TextOpts } from './font';
 import type { Input } from './input';
@@ -38,7 +39,16 @@ interface Floater {
   age: number;
 }
 
+/** A button under a tapped item's tooltip (touch screens only). */
+export interface TipAction {
+  label: string;
+  onClick: () => void;
+  /** Grayed out and not clickable. */
+  disabled?: boolean;
+}
+
 const CORNER = 8;
+const TIP_BTN_H = 22;
 /** How long a big centre-screen announcement stays up, in seconds. */
 const ANNOUNCE_T = 2.2;
 
@@ -53,6 +63,17 @@ export class Ui {
   private toastAge = 99;
   private announceText = '';
   private announceAge = 99;
+  /** Touch screens can't hover: tapping an item picks it, which shows its tooltip (anchored to
+   *  it, with action buttons) until the next tap elsewhere. */
+  readonly touch = isMobile;
+  private picked: string | null = null;
+  private pickedRect: Rect | null = null;
+  private pickedSeen = false;
+  /** The picked item's tooltip as drawn last frame; taps inside it only reach its buttons. */
+  private popup: Rect | null = null;
+  private inPopup = false;
+  /** This frame's tap landed on a pickable item or the popup (so it doesn't unpick). */
+  private tapUsed = false;
 
   constructor(
     readonly ctx: CanvasRenderingContext2D,
@@ -68,20 +89,50 @@ export class Ui {
     return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
   }
 
+  /** The pointer is over `r` (on touch screens, only while a finger is down on it). */
   hover(r: Rect): boolean {
-    return this.active && this.inside(r);
+    return this.active && this.inside(r) && (!this.touch || this.input.down) && !this.underPopup();
   }
 
   /** Mouse pressed and released inside `r`. */
   clicked(r: Rect): boolean {
     const i = this.input;
-    return this.active && i.released && this.inside(r) && this.inside(r, i.pressX, i.pressY);
+    return this.active && i.released && this.inside(r) && this.inside(r, i.pressX, i.pressY) && !this.underPopup();
+  }
+
+  /** The press is on the picked item's tooltip, and this isn't the tooltip asking. */
+  private underPopup(): boolean {
+    const i = this.input;
+    return this.touch && !this.inPopup && this.popup !== null && this.inside(this.popup, i.pressX, i.pressY);
+  }
+
+  /** Whether an item with a tooltip should show it: hovered with a mouse, or on touch screens
+   *  picked by a tap (a second tap on it, or a tap anywhere else, puts it away). `key` names
+   *  the item and must be unique among what's on screen. */
+  focus(key: string, r: Rect): boolean {
+    if (!this.touch) return this.hover(r);
+    if (!this.active) return false;
+    if (this.clicked(r)) {
+      this.tapUsed = true;
+      this.picked = this.picked === key ? null : key;
+      if (this.picked === null) this.popup = null;
+    }
+    if (this.picked !== key) return false;
+    this.pickedRect = r;
+    this.pickedSeen = true;
+    return true;
+  }
+
+  /** A click that acts on an item directly (desktop only: on touch screens a tap picks it and
+   *  its tooltip's buttons act). */
+  activated(r: Rect): boolean {
+    return !this.touch && this.clicked(r);
   }
 
   /** A click that started and ended outside `r` (e.g. to dismiss a dialog). */
   clickedOutside(r: Rect): boolean {
     const i = this.input;
-    return this.active && i.released && !this.inside(r) && !this.inside(r, i.pressX, i.pressY);
+    return this.active && i.released && !this.inside(r) && !this.inside(r, i.pressX, i.pressY) && !this.underPopup();
   }
 
   key(k: string): boolean {
@@ -158,8 +209,13 @@ export class Ui {
     this.overlays.push(fn);
   }
 
-  /** Dark tooltip box near the cursor, kept on-screen. `body` draws inside (x, y). */
-  tooltip(w: number, h: number, body: (x: number, y: number) => void): void {
+  /** Dark tooltip box near the cursor, kept on-screen. `body` draws inside (x, y). On touch
+   *  screens it sits by the picked item instead, with `actions` as buttons along its bottom. */
+  tooltip(w: number, h: number, body: (x: number, y: number) => void, actions: TipAction[] = []): void {
+    if (this.touch && this.pickedRect) {
+      this.pickedTooltip(this.pickedRect, w, h, body, actions);
+      return;
+    }
     const mx = this.input.x;
     const my = this.input.y;
     this.overlay(() => {
@@ -169,6 +225,39 @@ export class Ui {
       if (y + h > this.ctx.canvas.height - 4) y = this.ctx.canvas.height - h - 4;
       this.nine('panel_dark', { x, y, w, h });
       body(x + 8, y + 7);
+    });
+  }
+
+  private pickedTooltip(at: Rect, w: number, h: number, body: (x: number, y: number) => void, actions: TipAction[]): void {
+    const cw = this.ctx.canvas.width;
+    const ch = this.ctx.canvas.height;
+    const bw = 76;
+    if (actions.length > 0) {
+      w = Math.max(w, actions.length * (bw + 6) + 10);
+      h += TIP_BTN_H + 6;
+    }
+    // below the item if it fits, else above it, else as low as it goes
+    let x = Math.round(at.x + at.w / 2 - w / 2);
+    x = Math.max(4, Math.min(cw - w - 4, x));
+    let y = at.y + at.h + 4;
+    if (y + h > ch - 4) y = at.y - h - 4;
+    if (y < 4) y = ch - h - 4;
+    const r: Rect = { x, y, w, h };
+    this.overlay(() => {
+      this.nine('panel_dark', r);
+      body(x + 8, y + 7);
+      this.inPopup = true;
+      const i = this.input;
+      if (i.released && this.inside(r, i.pressX, i.pressY)) this.tapUsed = true;
+      const gap = 6;
+      const bw2 = Math.min(bw * 1.5, (w - 12 - gap * (actions.length - 1)) / Math.max(1, actions.length));
+      const total = actions.length * bw2 + gap * (actions.length - 1);
+      actions.forEach((a, j) => {
+        const br: Rect = { x: Math.round(x + (w - total) / 2 + j * (bw2 + gap)), y: y + h - TIP_BTN_H - 6, w: Math.round(bw2), h: TIP_BTN_H };
+        if (this.button(br, a.label, { disabled: a.disabled })) a.onClick();
+      });
+      this.inPopup = false;
+      this.popup = this.picked ? r : null;
     });
   }
 
@@ -211,6 +300,19 @@ export class Ui {
     if (this.announceAge < ANNOUNCE_T) this.drawAnnounce();
     for (const fn of this.overlays) fn();
     this.overlays = [];
+    if (this.touch) {
+      // put the tooltip away on a tap elsewhere, or when its item is gone (a new screen or modal)
+      if (!this.pickedSeen || (this.input.released && !this.tapUsed)) this.unpick();
+      this.pickedSeen = false;
+      this.tapUsed = false;
+    }
+  }
+
+  /** Put away the picked item's tooltip (touch screens). */
+  unpick(): void {
+    this.picked = null;
+    this.pickedRect = null;
+    this.popup = null;
   }
 
   private drawAnnounce(): void {

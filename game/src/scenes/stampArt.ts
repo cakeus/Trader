@@ -9,6 +9,9 @@ export const STAMP_SIZE = 42;
 /** 16x16 UI icon for deals that aren't about a specific good. */
 const DEAL_ICON: Partial<Record<DealerDeal['kind'], string>> = {
   bag: 'assets/ui/icon_bag.png',
+  dailyDiscount: 'assets/ui/icon_tag.png',
+  tip: 'assets/ui/icon_tip.png',
+  cantGetEnough: 'assets/ui/icon_more.png',
 };
 
 /** A deal drawn as a postage stamp (STAMP_SIZE square): the icon of its category's good in the

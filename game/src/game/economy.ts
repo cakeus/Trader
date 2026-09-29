@@ -1,6 +1,7 @@
 import { type Rng, rngFor } from '../engine/rng';
 import { areaView, categoryOf, fullData } from './area';
 import { CONFIG } from './config';
+import { todayEvent } from './events';
 import { type ActorGood, type GameData, type Offer, type Role, type RunState, type Tier, TIERS } from './types';
 
 export function offerKey(actorId: string, goodId: string): string {
@@ -51,16 +52,11 @@ export function tierPrice(prices: ActorGood['prices'], tier: Tier): number {
   return p;
 }
 
-/** Weighted pick of a seller's base daily stock (CONFIG.stockWeights). */
-export function rollStock(r: Rng): number {
-  const entries = Object.entries(CONFIG.stockWeights);
-  const total = entries.reduce((sum, [, w]) => sum + w, 0);
-  let x = r.next() * total;
-  for (const [qty, w] of entries) {
-    x -= w;
-    if (x < 0) return Number(qty);
-  }
-  return Number(entries[entries.length - 1][0]);
+/** A seller's base daily stock for a good of `category`, picked evenly from CONFIG.stockRange. */
+export function rollStock(r: Rng, category: string): number {
+  const range = CONFIG.stockRange[category];
+  if (!range) throw new Error(`no stock range for ${category}`);
+  return r.int(range[0], range[1]);
 }
 
 /** A seller's or buyer's tier weights for a good after the Dealer's luck perks (its category's, plus
@@ -83,9 +79,15 @@ export function sellerPrice(data: GameData, state: RunState, good: string, base:
   return Math.max(1, base - off - state.perks.discountAll);
 }
 
-/** Extra daily stock a seller of `good` has from the Dealer's stock deals. */
-export function extraStock(data: GameData, state: RunState, good: string): number {
-  return (state.perks.stock[categoryOf(data, good)] ?? 0) + state.perks.stockAll;
+/** How much the all-goods stock deal (Overflowing Supply) multiplies every seller's stock by. */
+export function stockMultiplier(state: RunState): number {
+  return CONFIG.dealer.stockAll ** state.perks.stockAll;
+}
+
+/** A seller's daily stock of `good` from its rolled `base`: the category's stock deal is added,
+ *  then Overflowing Supply multiplies it. */
+export function sellerStock(data: GameData, state: RunState, good: string, base: number): number {
+  return (base + (state.perks.stock[categoryOf(data, good)] ?? 0)) * stockMultiplier(state);
 }
 
 /** Extra daily demand a buyer of `good` has from the Dealer's demand deals. */
@@ -100,6 +102,8 @@ export function extraDemand(data: GameData, state: RunState, good: string): numb
 export function rollMarket(data: GameData, state: RunState): Record<string, Offer> {
   data = areaView(data, state.area);
   const market: Record<string, Offer> = {};
+  // today's event can cap every buyer's demand, even when demand is otherwise unlimited
+  const limit = todayEvent(data, state)?.buyerLimit;
   for (const loc of state.locations) {
     const next = { ...state.deck };
     for (const actorId of loc.actorIds) {
@@ -110,13 +114,16 @@ export function rollMarket(data: GameData, state: RunState): Record<string, Offe
         const roll = r.next(); // drawn either way, so stock rolls don't depend on the deck switch
         const u = CONFIG.tierDeck ? deckCard(state.seed, role, state.quota.index, next[role]++) : roll;
         const tier = tierAt(u, tierWeights(data, state, ag.good, role));
-        market[offerKey(actorId, ag.good)] = {
-          tier,
-          price: seller ? sellerPrice(data, state, ag.good, tierPrice(ag.prices, tier)) : tierPrice(ag.prices, tier),
-          left: seller
-            ? rollStock(r) + extraStock(data, state, ag.good)
-            : r.int(ag.qtyMin, ag.qtyMax) + extraDemand(data, state, ag.good),
-        };
+        const price = seller ? sellerPrice(data, state, ag.good, tierPrice(ag.prices, tier)) : tierPrice(ag.prices, tier);
+        if (seller) {
+          market[offerKey(actorId, ag.good)] = { tier, price, left: sellerStock(data, state, ag.good, rollStock(r, categoryOf(data, ag.good))) };
+          continue;
+        }
+        const demand = r.int(ag.qtyMin, ag.qtyMax) + extraDemand(data, state, ag.good);
+        market[offerKey(actorId, ag.good)] =
+          limit === undefined
+            ? { tier, price, left: demand }
+            : { tier, price, left: CONFIG.limitDemand ? Math.min(demand, limit) : limit, capped: true };
       }
     }
   }

@@ -1,13 +1,14 @@
 import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
-import { C, type Rect, type Ui } from '../engine/ui';
+import { C, type Rect, type TipAction, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
-import { describeDeal } from '../game/dealer';
-import { actorsAt, avgPaid, buyoutOffer, canAct, endDay, offer } from '../game/run';
-import type { Point, Quota, Role, Tier } from '../game/types';
+import { todayEvent, weatherOn } from '../game/events';
+import { owns } from '../game/dealer';
+import { actorsAt, avgPaid, buyBlock, buyoutOffer, buyPrice, canAct, demandApplies, endDay, offer, sellBlock } from '../game/run';
+import type { Quota, Role, Tier } from '../game/types';
 import { BuyoutDialog } from './buyout';
 import { DealerDialog } from './dealer';
-import { Confirm, drawBackground, drawBag, drawHud, drawPortrait, HUD_H } from './common';
+import { Confirm, drawBackground, drawBag, drawHud, drawPortrait, drawWeather, HUD_H } from './common';
 import { GameOver } from './gameOver';
 import { MapScene } from './map';
 import { QuotaResult } from './quotaResult';
@@ -37,6 +38,7 @@ export class LocationScene implements Scene {
     const run = app.run!;
     const def = app.data.locations[this.locId];
     drawBackground(ui, def.background);
+    drawWeather(ui, weatherOn(app.data, run.area, run.day));
 
     const nw = ui.font.measure(def.name, 2) + 28;
     ui.nine('panel_dark', { x: 8, y: HUD_H + 8, w: nw, h: 32 });
@@ -45,15 +47,27 @@ export class LocationScene implements Scene {
     actorsAt(run, this.locId).forEach((id, i) => {
       const actor = app.data.actors[id];
       const seller = actor.role === 'supplier';
-      const base = this.card(ui, actor, def.slots[i], i, seller ? 'Seller' : 'Buyer', seller ? C.greenLight : C.sky);
-      if (ui.hover(base)) this.actorTooltip(ui, id);
-      if (ui.clicked(base)) {
-        if (CONFIG.quickTrade) {
-          quickTrade(app, ui, id);
-        } else {
-          app.sfx.play('open');
-          app.push(new TradeDialog(app, id));
-        }
+      const open = () => {
+        app.sfx.play('open');
+        app.push(new TradeDialog(app, id));
+      };
+      const base: Rect = { ...def.slots[i], w: CARD_W, h: CARD_H };
+      const hot = ui.focus(`actor:${id}`, base);
+      this.card(ui, actor, base, i, seller ? 'Seller' : 'Buyer', seller ? C.greenLight : C.sky, hot);
+      if (hot) {
+        // touch screens trade one unit at a time from a button under the tooltip
+        const verb = seller ? 'Buy' : 'Sell';
+        // grayed out when nothing can be bought from (or sold to) this actor right now
+        const block = seller ? buyBlock : sellBlock;
+        const disabled = !actor.goods.some((g) => block(run, id, g.good) === null);
+        const actions: TipAction[] = CONFIG.quickTrade
+          ? [{ label: `${verb} 1`, onClick: () => quickTrade(app, ui, id, false), disabled }]
+          : [{ label: 'Trade', onClick: open }];
+        this.actorTooltip(ui, id, actions);
+      }
+      if (ui.activated(base)) {
+        if (CONFIG.quickTrade) quickTrade(app, ui, id);
+        else open();
       }
     });
 
@@ -61,12 +75,15 @@ export class LocationScene implements Scene {
       // he stands in the spot an actor would have taken (days dealt before that use dealerSlot)
       const n = actorsAt(run, this.locId).length;
       const pos = n < def.actorSlots ? def.slots[n] : def.dealerSlot;
-      const base = this.card(ui, app.data.dealer, pos, n, 'Stamps', C.gold);
-      if (ui.hover(base)) this.dealerTooltip(ui);
-      if (ui.clicked(base)) {
+      const open = () => {
         app.sfx.play('open');
         app.push(new DealerDialog(app));
-      }
+      };
+      const base: Rect = { ...pos, w: CARD_W, h: CARD_H };
+      const hot = ui.focus('dealer', base);
+      this.card(ui, app.data.dealer, base, n, 'Stamps', C.gold, hot);
+      if (hot) this.dealerTooltip(ui, [{ label: 'Open', onClick: open }]);
+      if (ui.activated(base)) open();
     }
 
     drawBag(app, ui, 8, H - 56);
@@ -89,10 +106,8 @@ export class LocationScene implements Scene {
     drawHud(app, ui);
   }
 
-  /** A bobbing portrait card with a tag above it. Returns its hit rect (without the bob). */
-  private card(ui: Ui, who: { portrait: string; name: string; role?: Role }, pos: Point, i: number, tag: string, tagColor: string): Rect {
-    const base: Rect = { x: pos.x, y: pos.y, w: CARD_W, h: CARD_H };
-    const hot = ui.hover(base);
+  /** A bobbing portrait card with a tag above it, at `base` (its hit rect, without the bob). */
+  private card(ui: Ui, who: { portrait: string; name: string; role?: Role }, base: Rect, i: number, tag: string, tagColor: string, hot: boolean): void {
     const bob = Math.round(Math.sin(ui.t * 2 + i * 1.7) * 2) - (hot ? 3 : 0);
     const r = { ...base, y: base.y + bob };
 
@@ -104,44 +119,50 @@ export class LocationScene implements Scene {
     const tw = ui.font.measure(tag) + 14;
     ui.nine('panel_dark', { x: r.x + (CARD_W - tw) / 2, y: r.y - 12, w: tw, h: 18 });
     ui.text(tag, r.x + CARD_W / 2, r.y - 7, tagColor, { align: 'center' });
-    return base;
   }
 
-  private dealerTooltip(ui: Ui): void {
-    const { data } = this.app;
-    const run = this.app.run!;
-    const rows = run.dealer!.offers.map((o) => ({
-      title: describeDeal(data, o.deal, run.area).title,
-      note: o.sold ? 'Sold' : `${o.cost} stars`,
-      color: o.sold ? C.muted : run.stars < o.cost ? C.redLight : C.gold,
-    }));
-    const w = Math.max(200, 32 + Math.max(...rows.map((r) => ui.font.measure(`${r.title}  ${r.note}`))));
-    ui.tooltip(w, 30 + rows.length * 12 + 18, (x, y) => {
-      ui.text(data.dealer.name, x, y, C.gold);
-      ui.text('Stamps:', x, y + 12, C.muted);
-      rows.forEach((r, i) => {
-        ui.text(r.title, x, y + 24 + i * 12, r.color === C.muted ? C.muted : C.cream);
-        ui.text(r.note, x + w - 16, y + 24 + i * 12, r.color, { align: 'right' });
-      });
-      ui.text(`You have ${run.stars} stars`, x, y + 28 + rows.length * 12, C.muted);
-    });
+  private dealerTooltip(ui: Ui, actions: TipAction[]): void {
+    const { name } = this.app.data.dealer;
+    const desc = 'Sell Stamps for Stars';
+    const w = 16 + Math.max(ui.font.measure(name), ui.font.measure(desc));
+    ui.tooltip(w, 30, (x, y) => {
+      ui.text(name, x, y, C.gold);
+      ui.text(desc, x, y + 12, C.muted);
+    }, actions);
   }
 
-  private actorTooltip(ui: Ui, actorId: string): void {
+  private actorTooltip(ui: Ui, actorId: string, actions: TipAction[]): void {
     const data = this.app.view;
     const run = this.app.run!;
     const a = data.actors[actorId];
     const seller = a.role === 'supplier';
     // text lines per good: name + price (+ deal label), stock/demand, avg paid (buyers)
+    const event = todayEvent(data, run);
+    const capLabel = event?.weather === 'rain' ? 'Raining' : event?.name.replace(/!$/, '');
     const rows = a.goods.map((g) => {
       const o = offer(run, actorId, g.good);
       const deal = DEAL_LABEL[o.tier];
       const lines: { text: string; color: string; suffix?: string; suffixColor?: string }[] = [
         { text: `${data.goods[g.good].name}  $${o.price}`, color: C.cream, suffix: deal?.text, suffixColor: deal?.color },
       ];
-      if (seller ? CONFIG.limitStock : CONFIG.limitDemand) {
-        const qty = seller ? `${o.left} in stock` : o.left > 0 ? `wants ${o.left}` : 'wants no more';
-        lines.push({ text: qty, color: o.left > 0 ? C.muted : C.redLight });
+      if (seller ? CONFIG.limitStock : demandApplies(o)) {
+        if (!seller && o.capped) {
+          const text = o.left > 0 ? `${capLabel} (buys ${o.left})` : `${capLabel} (can't buy more)`;
+          lines.push({ text, color: o.left > 0 ? C.cyan : C.redLight });
+        } else {
+          const qty = seller ? `${o.left} in stock` : o.left > 0 ? `wants ${o.left}` : 'wants no more';
+          lines.push({ text: qty, color: o.left > 0 ? C.muted : C.redLight });
+        }
+      }
+      // stamp perks: the Daily Discount's half-price first buy, and Tip Jar's progress
+      const first = seller ? buyPrice(run, o) : o.price;
+      if (first < o.price) lines.push({ text: `Daily Discount: first one $${first}`, color: C.cyan });
+      if (!seller && owns(run, { kind: 'cantGetEnough' })) lines.push({ text: `+$${CONFIG.dealer.cantGetEnoughStep} after each sale`, color: C.cyan });
+      if (!seller && owns(run, { kind: 'tip' })) {
+        const { tip, tipAfter } = CONFIG.dealer;
+        const more = tipAfter - (o.sold ?? 0);
+        const text = o.tipped ? `Tipped $${tip} today` : `Tip: +$${tip} after ${more} more sold`;
+        lines.push({ text, color: o.tipped ? C.muted : C.cyan });
       }
       const avg = seller ? null : avgPaid(run, g.good);
       if (avg !== null) {
@@ -168,7 +189,7 @@ export class LocationScene implements Scene {
         });
         gy += r.h;
       }
-    });
+    }, actions);
   }
 
   private tryEndDay(): void {
