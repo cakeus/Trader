@@ -1,4 +1,4 @@
-import type { DealerDeal, RankedKind, Tier } from './types';
+import type { DealerDeal, RankedKind, Rarity, Tier } from './types';
 
 /** Tunable rule switches. Mutable so tests can flip them. */
 export const CONFIG = {
@@ -42,9 +42,26 @@ export const CONFIG = {
      *  bought once per run. */
     cost: {
       bag: 3, discount: 3, luck: 3, stock: 3, buyerStock: 3,
-      discountAll: 6, stockAll: 6, buyerStockAll: 6, luckAll: 8,
-      dailyDiscount: 5, tip: 5, cantGetEnough: 5,
+      discountAll: 6, stockAll: 6, buyerStockAll: 6, luckAll: 8, tip: 5,
+      dailyDiscount: 8, cantGetEnough: 8, collector: 8,
+      birdsEye: 8, haggler: 8, fannyPack: 8, packedHouse: 8, cramazing: 8, mixedBag: 8, lastCall: 8,
+      bigTipper: 8, fuzzyDice: 8, sleepingBag: 8, campFire: 8, monocle: 8, detour: 8, vintage: 8,
+      cleanSweep: 8, flipper: 8, perfectPlanner: 8, dumpTruck: 8,
     } as Record<DealerDeal['kind'], number>,
+    /** Each kind's rarity (unlisted kinds are common). Each rarity has its own stamp deck. */
+    rarity: {
+      dailyDiscount: 'rare', cantGetEnough: 'rare', collector: 'rare',
+      birdsEye: 'rare', haggler: 'rare', fannyPack: 'rare', packedHouse: 'rare', cramazing: 'rare',
+      mixedBag: 'rare', lastCall: 'rare', bigTipper: 'rare', fuzzyDice: 'rare', sleepingBag: 'rare',
+      campFire: 'rare', monocle: 'rare', detour: 'rare', vintage: 'rare', cleanSweep: 'rare',
+      flipper: 'rare', perfectPlanner: 'rare', dumpTruck: 'rare',
+    } as Partial<Record<DealerDeal['kind'], Rarity>>,
+    /** Chance each stamp he draws is epic or rare: `base` in week 2 (the first week he comes), plus
+     *  `perWeek` for every week after. The rest are common. */
+    rarityOdds: {
+      epic: { base: 0.04, perWeek: 0.02 },
+      rare: { base: 0.08, perWeek: 0.04 },
+    } as Record<Exclude<Rarity, 'common'>, { base: number; perWeek: number }>,
     /** Star cost of bag upgrades I, II, III, IV; each unlocks after the one before. */
     bagCosts: [3, 5, 7, 9],
     /** Bag slots added by bag upgrades I, II, III, IV (8 in all). */
@@ -72,7 +89,33 @@ export const CONFIG = {
      *  (once per buyer per day). */
     tip: 5,
     tipAfter: 2,
+    /** Stamp Collector: extra stamps Nox brings each visit (added to his table the moment it's bought). */
+    collectorOffers: 1,
     /** Can't Get Enough: a buyer's price goes up this much after every unit sold to it (for the day). */
     cantGetEnoughStep: 1,
+    /** Haggler: the first sale of the day pays this much extra (0.5 = +50%), less `hagglerStep`
+     *  for every unit sold before it that day (down to nothing). Applied last, on top of everything. */
+    hagglerStart: 0.5,
+    hagglerStep: 0.25,
+    /** Fanny Pack: $ at the end of the day per different good in the bag. */
+    fannyPack: 1,
+    /** Mixed Bag: $ tip for the first unit of each good sold in a day. */
+    mixedBagTip: 3,
+    /** Big Tipper: every tip is multiplied by this. */
+    bigTipper: 3,
+    /** Fuzzy Dice: chance per unit sold that the buyer jumps to an Amazing deal for the day. */
+    fuzzyDiceChance: 1 / 6,
+    /** Sleeping Bag: share of what the bag cost that's paid for a day without trading. */
+    sleepingBag: 0.05,
+    /** Monocle: added to the price multiplier of every buy and sell. */
+    monocle: 0.25,
+    /** Vintage: added to a unit's sell multiplier per day it's been in the bag. */
+    vintagePerDay: 0.1,
+    /** Clean Sweep: $ per bag slot for ending the day with an empty bag. */
+    cleanSweep: 1,
+    /** Flipper: added to the sell multiplier of units bought yesterday. */
+    flipper: 0.25,
+    /** Cramazing: an Amazing deal's difference from the Good price is multiplied by this. */
+    cramazing: 2,
   },
 };

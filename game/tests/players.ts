@@ -11,8 +11,8 @@ import { areaView } from '../src/game/area';
 import { buyDealerDeal, dealCost, dealFromKey, dealGood, isUniversal, owns } from '../src/game/dealer';
 import { CONFIG } from '../src/game/config';
 import { eventOn } from '../src/game/events';
-import { sellerPrice, tierPrice, tierWeights } from '../src/game/economy';
-import { actorsAt, buy, buyPrice, countOf, freeSlots, maxBuy, maxSell, offer, sell, visit } from '../src/game/run';
+import { dealPrice, sellerPrice, tierWeights } from '../src/game/economy';
+import { actorsAt, buy, buyPrice, countOf, freeSlots, fullBuyPrice, maxBuy, maxSell, nextSellPrice, offer, sell, visit } from '../src/game/run';
 import { type DealerDeal, type RunState, type SingleKind, TIERS } from '../src/game/types';
 import { loadTestData } from './helpers';
 
@@ -20,26 +20,22 @@ export const data = loadTestData();
 
 /** Deals bought so far, by kind (a sim can reset and read this). */
 export const SIM = {
-  bought: {
-    bag: 0, discount: 0, luck: 0, stock: 0, buyerStock: 0,
-    discountAll: 0, stockAll: 0, buyerStockAll: 0, luckAll: 0, dailyDiscount: 0, tip: 0, cantGetEnough: 0,
-  } as Record<
-    DealerDeal['kind'],
-    number
-  >,
+  bought: Object.fromEntries(Object.keys(CONFIG.dealer.cost).map((k) => [k, 0])) as Record<DealerDeal['kind'], number>,
 };
 
 export const clone = (s: RunState): RunState => JSON.parse(JSON.stringify(s));
 
 /** Tier-weighted average price for an actor's good, after this run's perks: sellers
- *  apply the good's discount, and both use the luck-boosted tier weights. */
+ *  apply the good's discount, both use the luck-boosted tier weights and Cramazing's Amazing
+ *  prices, and the Monocle raises both. */
 export function expectedPrice(s: RunState, actorId: string, good: string): number {
   const a = data.actors[actorId];
   const ag = a.goods.find((g) => g.good === good)!;
   const seller = a.role === 'supplier';
   const w = tierWeights(data, s, good, a.role);
-  return TIERS.filter((t) => w[t]).reduce((sum, t) => {
-    const p = tierPrice(ag.prices, t);
+  const monocle = owns(s, { kind: 'monocle' }) ? 1 + CONFIG.dealer.monocle : 1;
+  return monocle * TIERS.filter((t) => w[t]).reduce((sum, t) => {
+    const p = dealPrice(s, ag.prices, t);
     return sum + w[t]! * (seller ? sellerPrice(data, s, good, p) : p);
   }, 0);
 }
@@ -146,7 +142,7 @@ export function forceStamp(s: RunState, profile: Profile): void {
   if (!kind || !s.dealer || owns(s, { kind })) return;
   const deal: DealerDeal = { kind };
   const offers = s.dealer.offers.filter((o) => o.deal.kind !== kind);
-  s.dealer.offers = [{ deal, cost: dealCost(deal), sold: false }, ...offers].slice(0, CONFIG.dealer.offers);
+  s.dealer.offers = [{ deal, cost: dealCost(deal), sold: false }, ...offers].slice(0, s.dealer.offers.length);
 }
 
 /** The good a stacking profile is building up: the one it holds most of. */
@@ -191,7 +187,7 @@ function focusScore(s: RunState, loc: string, profile: Profile): number {
       }
       if (def.role === 'supplier' && profile.discountFirst && owns(s, { kind: 'dailyDiscount' })) {
         const o = offer(s, a, g.good);
-        if (resale(s, g.good) > buyPrice(s, o)) saving = Math.max(saving, o.price - buyPrice(s, o));
+        if (resale(s, g.good) > buyPrice(s, o)) saving = Math.max(saving, fullBuyPrice(s, o) - buyPrice(s, o));
       }
     }
   }
@@ -217,7 +213,11 @@ function focus(kind: SingleKind, name: string, about: string, extra: Partial<Pro
 /** Rough value of each deal kind for a player who wants them all (bag slots scale best). */
 const DEAL_VALUE: Record<DealerDeal['kind'], number> = {
   bag: 5, luckAll: 4, discountAll: 4, stockAll: 3, buyerStockAll: 3, discount: 2, luck: 1.5, stock: 1,
-  buyerStock: 1, dailyDiscount: 3, tip: 3, cantGetEnough: 3,
+  buyerStock: 1, dailyDiscount: 3, tip: 3, cantGetEnough: 3, collector: 2,
+  // the rares (the sims don't use Bird's Eye's or Detour's information, so they're worth little)
+  monocle: 3, campFire: 3, mixedBag: 2.5, cramazing: 2, haggler: 2, fannyPack: 2, packedHouse: 2,
+  bigTipper: 2, fuzzyDice: 2, flipper: 2, perfectPlanner: 2, dumpTruck: 2, vintage: 1.5, lastCall: 1,
+  cleanSweep: 1, birdsEye: 0.5, sleepingBag: 0.5, detour: 0.5,
 };
 
 export const PROFILES: Record<string, Profile> = {
@@ -333,7 +333,7 @@ export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.im
   // sell: highest-paying buyer first
   const sales = actors
     .filter((a) => defs[a].role === 'buyer')
-    .flatMap((a) => defs[a].goods.map((g) => ({ a, good: g.good, price: offer(s, a, g.good).price })))
+    .flatMap((a) => defs[a].goods.map((g) => ({ a, good: g.good, price: nextSellPrice(s, offer(s, a, g.good), g.good) })))
     .sort((x, y) => y.price - x.price);
   const desperate = !s.quota.met && s.day >= s.quota.dueDay;
   for (const t of sales) {
@@ -346,7 +346,7 @@ export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.im
   if (profile.discountFirst && owns(s, { kind: 'dailyDiscount' }) && !s.boughtToday) {
     const first = sellers
       .filter((t) => maxBuy(s, t.a, t.good) > 0 && resale(s, t.good) > buyPrice(s, offer(s, t.a, t.good)))
-      .sort((x, y) => offer(s, y.a, y.good).price - offer(s, x.a, x.good).price)[0];
+      .sort((x, y) => fullBuyPrice(s, offer(s, y.a, y.good)) - fullBuyPrice(s, offer(s, x.a, x.good)))[0];
     if (first) buy(data, s, first.a, first.good, 1);
   }
   // when buyers will be capped from tomorrow (the Rainstorm), a buyer takes only `limit` a day, so
@@ -360,7 +360,7 @@ export function tradeAt(s: RunState, loc: string, profile: Profile = PROFILES.im
   const room = (good: string) => (limit === undefined ? 99 : Math.max(0, limit - countOf(s, good)));
   const buys = sellers
     .map(({ a, good }) => {
-      const p = offer(s, a, good).price;
+      const p = fullBuyPrice(s, offer(s, a, good));
       const held = countOf(s, good);
       const k = Math.max(1, Math.min(maxBuy(s, a, good), freeSlots(s), room(good)));
       const extra = stack ? (stack(held + k) - stack(held)) / k : 0;

@@ -8,10 +8,11 @@ import { loadSettings } from './engine/settings';
 import { Ui } from './engine/ui';
 import { loadData } from './game/data';
 import { MainMenu } from './scenes/mainMenu';
+import { STAMP_IMAGES } from './scenes/stampArt';
 
 const UI_IMAGES = [
   'panel', 'panel_dark', 'btn', 'btn_hover', 'btn_down', 'btn_disabled', 'row', 'row_hover', 'cursor',
-  'icon_coin', 'icon_bag', 'icon_calendar', 'icon_check', 'icon_pin', 'icon_star', 'icon_flag', 'stamp', 'stamp_rare',
+  'icon_coin', 'icon_bag', 'icon_calendar', 'icon_check', 'icon_pin', 'icon_star', 'icon_flag',
 ].map((n) => `assets/ui/${n}.png`);
 
 async function boot(): Promise<void> {
@@ -21,6 +22,7 @@ async function boot(): Promise<void> {
   const assets = new Assets();
   await assets.load([
     ...UI_IMAGES,
+    ...STAMP_IMAGES,
     'assets/font/font.png',
     ...Object.values(data.areas).map((a) => a.map),
     ...Object.values(data.goods).flatMap((g) => [g.icon, g.iconSmall, g.iconMedium]),

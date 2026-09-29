@@ -2,7 +2,7 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
-import { buy, buyBlock, buyPrice, countOf, demandApplies, maxBuy, maxSell, offer, sell, sellBlock, type TradeBlock } from '../game/run';
+import { buyBlock, buyPrice, buyUnits, countOf, demandApplies, maxBuy, maxSell, nextSellPrice, offer, sellBlock, sellUnits, type TradeBlock } from '../game/run';
 import { drawBag, drawPortrait } from './common';
 
 const REASON: Record<Exclude<TradeBlock, null>, string> = {
@@ -59,7 +59,8 @@ export class TradeDialog implements Scene {
         ui.text(REASON[block], right, row.y + 17, C.red, { align: 'right' });
       } else {
         const verb = selling ? 'Buy' : 'Sell';
-        ui.text(`${verb} $${selling ? buyPrice(run, o) : o.price}`, right, row.y + 12, C.ink, { align: 'right', scale: 2 });
+        const price = selling ? buyPrice(run, o) : nextSellPrice(run, o, ag.good);
+        ui.text(`${verb} $${price}`, right, row.y + 12, C.ink, { align: 'right', scale: 2 });
       }
 
       if (ui.clicked(row)) tradeWith(app, ui, actorId, ag.good);
@@ -90,20 +91,19 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string, max =
     ui.floater(REASON[block], mx, my - 12, C.redLight);
     return;
   }
-  const o = offer(run, actorId, good);
   const wasMet = run.quota.met;
   const cash = run.cash;
   if (selling) {
-    buy(app.data, run, actorId, good, max ? maxBuy(run, actorId, good) : 1);
+    const bought = buyUnits(app.data, run, actorId, good, max ? maxBuy(run, actorId, good) : 1);
     app.sfx.play('buy');
     ui.floater(`-$${cash - run.cash}`, mx, my - 12, C.redLight);
+    if (bought.free) ui.floater(`+${bought.free} free!`, mx, my - 26, C.cyan);
   } else {
-    const tipped = o.tipped;
-    sell(app.data, run, actorId, good, max ? maxSell(run, actorId, good) : 1);
+    const sale = sellUnits(app.data, run, actorId, good, max ? maxSell(run, actorId, good) : 1);
     app.sfx.play('sell');
-    const tip = o.tipped && !tipped ? CONFIG.dealer.tip : 0;
-    ui.floater(`+$${run.cash - cash - tip}`, mx, my - 12, C.gold);
-    if (tip) ui.floater(`+$${tip} tip!`, mx, my - 26, C.cyan);
+    ui.floater(`+$${run.cash - cash - sale.tips}`, mx, my - 12, C.gold);
+    if (sale.tips) ui.floater(`+$${sale.tips} tip!`, mx, my - 26, C.cyan);
+    if (sale.lucky) ui.floater('Lucky dice! Amazing deal', mx, my - (sale.tips ? 40 : 26), C.cyan);
   }
   if (!wasMet && run.quota.met) {
     app.sfx.play('quota');

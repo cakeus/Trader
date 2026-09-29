@@ -3,8 +3,8 @@ import { areaFor, areasInOrder, areaView } from './area';
 import { CONFIG } from './config';
 import { dealActors } from './deal';
 import { dealerBlock, owns, rollDealer } from './dealer';
-import { deckCards, offerKey, rollMarket, sellerPrice } from './economy';
-import type { EndDayResult, GameData, Offer, Quota, RunState } from './types';
+import { dealPrice, deckCards, offerKey, rollMarket, sellerPrice } from './economy';
+import type { BagItem, EndDayResult, GameData, Offer, Quota, RunState, SingleKind } from './types';
 
 export const START_CASH = 10;
 export const CAPACITY = 4;
@@ -40,7 +40,7 @@ export function newRun(data: GameData, seed: number): RunState {
   const area = areaFor(data, 1);
   const locations = pickLocations(data, seed, area, true);
   const state: RunState = {
-    version: 12,
+    version: 13,
     seed,
     area,
     moved: null,
@@ -68,26 +68,37 @@ export function newRun(data: GameData, seed: number): RunState {
   return state;
 }
 
+/** Does the run own this one-time stamp? */
+function has(state: RunState, kind: SingleKind): boolean {
+  return owns(state, { kind });
+}
+
 /** See whether the Dealer visits (he takes one actor's spot at his location), deal today's actors
  *  to locations, and roll their deals.
- *  On a quota's due day, a buyer of the player's most common bag good is guaranteed to be present.
+ *  On a quota's due day (and every day with the Dump Truck stamp), a buyer of the player's most
+ *  common bag good is guaranteed to be present; with Perfect Planner, one of the priciest bag good.
  *  On other days, if the player can't buy anything, a buyer of something in the bag is (see rescueGood).
- *  With an empty bag, no location has only buyers. */
+ *  With an empty bag, no location has only buyers. With Packed House, one location gets an extra actor. */
 function startDay(data: GameData, state: RunState): void {
   data = areaView(data, state.area);
   state.dealer = rollDealer(data, state);
   const ids = state.locations.map((l) => l.id);
   const dealerAt = state.dealer?.locationId;
+  state.packedAt = has(state, 'packedHouse') ? ids[rngFor(state.seed, 'packed', state.day).int(0, ids.length - 1)] : null;
   // with an empty bag, a buyers-only location has nothing for the player, so it's rerolled
   const needSeller = state.inventory.length === 0;
-  const deal = (buyerOf?: string) => dealActors(data, state.seed, state.day, ids, buyerOf, dealerAt, needSeller);
-  let dealt: Record<string, string[]>;
-  if (state.day === state.quota.dueDay) {
-    dealt = deal(guaranteedGood(data, state) ?? undefined);
-  } else {
-    dealt = deal();
+  const due = state.day === state.quota.dueDay;
+  const needs: string[] = [];
+  const common = guaranteedGood(data, state);
+  if (common && (due || has(state, 'dumpTruck'))) needs.push(common);
+  const priciest = plannerGood(data, state);
+  if (priciest && has(state, 'perfectPlanner')) needs.push(priciest);
+  const deal = (extra: string[] = []) =>
+    dealActors(data, state.seed, state.day, ids, [...needs, ...extra], dealerAt, needSeller, state.packedAt);
+  let dealt = deal();
+  if (!due) {
     const rescue = rescueGood(data, state, Object.values(dealt).flat());
-    if (rescue) dealt = deal(rescue);
+    if (rescue) dealt = deal([rescue]);
   }
   for (const loc of state.locations) loc.actorIds = dealt[loc.id];
   state.market = rollMarket(data, state);
@@ -100,13 +111,7 @@ export function guaranteedGood(data: GameData, state: RunState): string | null {
   data = areaView(data, state.area);
   const counts = new Map<string, number>();
   for (const it of state.inventory) counts.set(it.good, (counts.get(it.good) ?? 0) + 1);
-  const sellPrice = (good: string) =>
-    Math.max(
-      0,
-      ...Object.values(data.actors)
-        .filter((a) => a.role === 'buyer')
-        .flatMap((a) => a.goods.filter((g) => g.good === good).map((g) => g.prices.good)),
-    );
+  const sellPrice = (good: string) => goodSellPrice(data, good);
   let best: string | null = null;
   for (const [good, n] of counts) {
     if (best === null) {
@@ -118,6 +123,26 @@ export function guaranteedGood(data: GameData, state: RunState): string | null {
       n > bn || (n === bn && (sellPrice(good) > sellPrice(best) || (sellPrice(good) === sellPrice(best) && good < best)));
     if (better) best = good;
   }
+  return best;
+}
+
+/** The good a buyer normally pays most for (its best Good-tier buyer price). */
+function goodSellPrice(data: GameData, good: string): number {
+  return Math.max(
+    0,
+    ...Object.values(data.actors)
+      .filter((a) => a.role === 'buyer')
+      .flatMap((a) => a.goods.filter((g) => g.good === good).map((g) => g.prices.good)),
+  );
+}
+
+/** Perfect Planner's good: the bag good with the highest Good-tier buyer price (ties by id).
+ *  Null when the bag is empty. */
+export function plannerGood(data: GameData, state: RunState): string | null {
+  data = areaView(data, state.area);
+  const goods = [...new Set(state.inventory.map((it) => it.good))].sort();
+  let best: string | null = null;
+  for (const g of goods) if (best === null || goodSellPrice(data, g) > goodSellPrice(data, best)) best = g;
   return best;
 }
 
@@ -153,7 +178,7 @@ export function rescueGood(data: GameData, state: RunState, dealtIds: string[]):
 
 /** Commit to today's location. Its offers use up the tier deck cards they were dealt. */
 export function visit(data: GameData, state: RunState, locationId: string): void {
-  if (state.visited !== null) return;
+  if (state.visited !== null || state.detoured === locationId) return;
   state.visited = locationId;
   const used = deckCards(data, state, locationId);
   state.deck.supplier += used.supplier;
@@ -183,10 +208,53 @@ export function freeSlots(state: RunState): number {
   return state.capacity - state.inventory.length;
 }
 
+/** What the Monocle stamp adds to every buy and sell price multiplier. */
+function monocle(state: RunState): number {
+  return has(state, 'monocle') ? CONFIG.dealer.monocle : 0;
+}
+
+/** What a unit from a seller's offer costs, before the Daily Discount: its price, raised by the
+ *  Monocle (rounded, min $1). */
+export function fullBuyPrice(state: RunState, o: Offer): number {
+  return Math.max(1, Math.round(o.price * (1 + monocle(state))));
+}
+
 /** What the next unit bought from a seller's offer costs: with the Daily Discount stamp, the day's
  *  first unit is half price (rounded up, min $1). */
 export function buyPrice(state: RunState, o: Offer): number {
-  return !state.boughtToday && owns(state, { kind: 'dailyDiscount' }) ? Math.max(1, Math.ceil(o.price / 2)) : o.price;
+  const p = fullBuyPrice(state, o);
+  return !state.boughtToday && has(state, 'dailyDiscount') ? Math.max(1, Math.ceil(p / 2)) : p;
+}
+
+/** The Haggler stamp's multiplier on the next sale today: 1 + hagglerStart, less hagglerStep per
+ *  unit already sold today, never below 0. */
+export function hagglerMultiplier(state: RunState): number {
+  if (!has(state, 'haggler')) return 1;
+  const { hagglerStart, hagglerStep } = CONFIG.dealer;
+  return Math.max(0, 1 + hagglerStart - hagglerStep * (state.soldToday ?? 0));
+}
+
+/** The bonuses added to a bag unit's sell price multiplier: Monocle, Vintage (per day in the
+ *  bag) and Flipper (bought yesterday). */
+export function sellBonus(state: RunState, item: BagItem): number {
+  const d = CONFIG.dealer;
+  let bonus = monocle(state);
+  if (has(state, 'vintage')) bonus += d.vintagePerDay * Math.max(0, state.day - item.day);
+  if (has(state, 'flipper') && item.day === state.day - 1) bonus += d.flipper;
+  return bonus;
+}
+
+/** What a buyer's offer pays for one bag unit: its price times 1 + `sellBonus` (rounded), then
+ *  times Haggler's multiplier (rounded). */
+export function sellPrice(state: RunState, o: Offer, item: BagItem): number {
+  return Math.round(Math.round(o.price * (1 + sellBonus(state, item))) * hagglerMultiplier(state));
+}
+
+/** What selling one unit of a good to a buyer's offer pays right now (the oldest unit in the bag
+ *  goes first; with none, a unit bought today). */
+export function nextSellPrice(state: RunState, o: Offer, goodId: string): number {
+  const item = state.inventory.find((it) => it.good === goodId) ?? { good: goodId, paid: 0, day: state.day };
+  return sellPrice(state, o, item);
 }
 
 export type TradeBlock = 'soldOut' | 'noCash' | 'bagFull' | 'noneOwned' | 'noDemand' | null;
@@ -216,7 +284,7 @@ export function maxBuy(state: RunState, actorId: string, goodId: string): number
   const o = offer(state, actorId, goodId);
   if (o.price <= 0) return 0;
   const first = buyPrice(state, o);
-  const afford = state.cash < first ? 0 : 1 + Math.floor((state.cash - first) / o.price);
+  const afford = state.cash < first ? 0 : 1 + Math.floor((state.cash - first) / fullBuyPrice(state, o));
   const n = Math.min(freeSlots(state), afford);
   return Math.max(0, CONFIG.limitStock ? Math.min(n, o.left) : n);
 }
@@ -240,50 +308,156 @@ export function canAct(data: GameData, state: RunState, locationId: string): boo
   return trade || dealer;
 }
 
+/** What a purchase did: units paid for, and free ones from the Camp Fire stamp. */
+export interface Purchase {
+  n: number;
+  free: number;
+}
+
 /** Buy up to `qty` units; returns how many were bought. */
 export function buy(data: GameData, state: RunState, actorId: string, goodId: string, qty = 1): number {
-  if (data.actors[actorId]?.role !== 'supplier') return 0;
+  return buyUnits(data, state, actorId, goodId, qty).n;
+}
+
+/** Buy up to `qty` units. With Camp Fire, the day's first unit comes with a free copy (same price
+ *  paid, if there's room; it doesn't use up the seller's stock). */
+export function buyUnits(data: GameData, state: RunState, actorId: string, goodId: string, qty = 1): Purchase {
+  const done: Purchase = { n: 0, free: 0 };
+  if (data.actors[actorId]?.role !== 'supplier') return done;
   const n = Math.min(qty, maxBuy(state, actorId, goodId));
-  if (n <= 0) return 0;
   const o = offer(state, actorId, goodId);
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n && freeSlots(state) > 0; i++) {
     const paid = buyPrice(state, o);
+    const first = !state.boughtToday;
     state.inventory.push({ good: goodId, paid, day: state.day });
     state.cash -= paid;
     state.boughtToday = true;
+    done.n++;
+    if (first && has(state, 'campFire') && freeSlots(state) > 0) {
+      state.inventory.push({ good: goodId, paid, day: state.day });
+      done.free++;
+    }
   }
-  if (CONFIG.limitStock) o.left -= n;
-  state.stats.bought += n;
-  return n;
+  if (CONFIG.limitStock) o.left -= done.n;
+  state.stats.bought += done.n;
+  return done;
 }
 
-/** Sell up to `qty` units (oldest first); returns how many were sold. With the Tip Jar
- *  stamp, a buyer adds CONFIG.dealer.tip once it has bought tipAfter units today. With Can't Get
- *  Enough, its price goes up CONFIG.dealer.cantGetEnoughStep after every unit (for the rest of the day). */
+/** What a sale did: units sold, tips paid, and whether Fuzzy Dice turned the buyer Amazing. */
+export interface Sale {
+  n: number;
+  tips: number;
+  lucky: boolean;
+}
+
+/** Sell up to `qty` units (oldest first); returns how many were sold. */
 export function sell(data: GameData, state: RunState, actorId: string, goodId: string, qty = 1): number {
-  if (data.actors[actorId]?.role !== 'buyer') return 0;
+  return sellUnits(data, state, actorId, goodId, qty).n;
+}
+
+/** Sell up to `qty` units (oldest first), each at `sellPrice`. Stamps:
+ *  - Can't Get Enough: the buyer's price goes up CONFIG.dealer.cantGetEnoughStep after every unit
+ *    (for the rest of the day).
+ *  - Fuzzy Dice: after every unit, a CONFIG.dealer.fuzzyDiceChance roll turns the buyer Amazing
+ *    for the rest of the day.
+ *  - Tip Jar: the buyer tips CONFIG.dealer.tip once it has bought tipAfter units today.
+ *  - Mixed Bag: the first sale of each good in a day tips CONFIG.dealer.mixedBagTip.
+ *  - Big Tipper multiplies every tip. */
+export function sellUnits(data: GameData, state: RunState, actorId: string, goodId: string, qty = 1): Sale {
+  const sale: Sale = { n: 0, tips: 0, lucky: false };
+  const actor = data.actors[actorId];
+  if (actor?.role !== 'buyer') return sale;
   const n = Math.min(qty, maxSell(state, actorId, goodId));
+  if (n <= 0) return sale;
   const o = offer(state, actorId, goodId);
-  const rising = owns(state, { kind: 'cantGetEnough' });
+  const d = CONFIG.dealer;
+  const prices = actor.goods.find((g) => g.good === goodId)!.prices;
   for (let i = 0; i < n; i++) {
-    const [it] = state.inventory.splice(state.inventory.findIndex((it) => it.good === goodId), 1);
-    recordSale(state, it.paid, o.price);
-    state.cash += o.price;
-    if (rising) o.price += CONFIG.dealer.cantGetEnoughStep;
+    const idx = state.inventory.findIndex((it) => it.good === goodId);
+    const price = sellPrice(state, o, state.inventory[idx]);
+    const [it] = state.inventory.splice(idx, 1);
+    recordSale(state, it.paid, price);
+    state.cash += price;
+    state.soldToday = (state.soldToday ?? 0) + 1;
+    o.sold = (o.sold ?? 0) + 1;
+    if (has(state, 'cantGetEnough')) o.price += d.cantGetEnoughStep;
+    if (has(state, 'fuzzyDice') && o.tier !== 'amazing' &&
+        rngFor(state.seed, 'dice', state.day, actorId, goodId, o.sold).next() < d.fuzzyDiceChance) {
+      // keeps any Can't Get Enough raises
+      o.price += dealPrice(state, prices, 'amazing') - dealPrice(state, prices, o.tier);
+      o.tier = 'amazing';
+      sale.lucky = true;
+    }
   }
+  sale.n = n;
   if (demandApplies(o)) o.left -= n;
-  o.sold = (o.sold ?? 0) + n;
-  const { tip, tipAfter } = CONFIG.dealer;
-  if (!o.tipped && o.sold >= tipAfter && owns(state, { kind: 'tip' })) {
+  if (!o.tipped && (o.sold ?? 0) >= d.tipAfter && has(state, 'tip')) {
     o.tipped = true;
-    state.cash += tip;
-    const st = state.stats;
-    st.profit = (st.profit ?? 0) + tip;
-    st.daySales = (st.daySales ?? 0) + tip;
-    st.bestDaySales = Math.max(st.bestDaySales ?? 0, st.daySales);
+    sale.tips += payTip(state, d.tip);
+  }
+  const soldGoods = (state.soldGoodsToday ??= []);
+  if (!soldGoods.includes(goodId)) {
+    soldGoods.push(goodId);
+    if (has(state, 'mixedBag')) sale.tips += payTip(state, d.mixedBagTip);
   }
   updateQuota(state);
-  return n;
+  return sale;
+}
+
+/** Pay a tip (times Big Tipper's multiplier, if owned); returns what was paid. */
+function payTip(state: RunState, amount: number): number {
+  const tip = amount * (has(state, 'bigTipper') ? CONFIG.dealer.bigTipper : 1);
+  state.cash += tip;
+  const st = state.stats;
+  st.profit = (st.profit ?? 0) + tip;
+  st.daySales = (st.daySales ?? 0) + tip;
+  st.bestDaySales = Math.max(st.bestDaySales ?? 0, st.daySales);
+  return tip;
+}
+
+/** Has anything been bought or sold today? */
+export function tradedToday(state: RunState): boolean {
+  return !!state.boughtToday || (state.soldToday ?? 0) > 0;
+}
+
+/** With the Detour stamp: nothing traded yet today at the first location, so the player can
+ *  go to a second one instead of ending the day. */
+export function canDetour(state: RunState): boolean {
+  return has(state, 'detour') && state.visited !== null && !state.detoured && !tradedToday(state);
+}
+
+/** Leave today's location for another one (see canDetour). */
+export function detour(state: RunState): void {
+  if (!canDetour(state)) return;
+  state.detoured = state.visited;
+  state.visited = null;
+}
+
+/** The end-of-day payouts from stamps, if the day ended now. */
+export interface Payouts {
+  /** Fanny Pack: per different good in the bag. */
+  fannyPack: number;
+  /** Sleeping Bag: a share of what the bag cost, for a day without trading. */
+  sleepingBag: number;
+  /** Clean Sweep: per bag slot, for an empty bag. */
+  cleanSweep: number;
+}
+
+export function endOfDayPayouts(state: RunState): Payouts {
+  const d = CONFIG.dealer;
+  const bag = state.inventory;
+  return {
+    fannyPack: has(state, 'fannyPack') ? d.fannyPack * new Set(bag.map((it) => it.good)).size : 0,
+    sleepingBag:
+      has(state, 'sleepingBag') && !tradedToday(state)
+        ? Math.round(d.sleepingBag * bag.reduce((sum, it) => sum + it.paid, 0))
+        : 0,
+    cleanSweep: has(state, 'cleanSweep') && bag.length === 0 ? d.cleanSweep * state.capacity : 0,
+  };
+}
+
+export function payoutTotal(p: Payouts): number {
+  return p.fannyPack + p.sleepingBag + p.cleanSweep;
 }
 
 /** Count one unit sold at `price` (bought for `paid`) in the run stats. */
@@ -322,10 +496,16 @@ function payStars(state: RunState, q: Quota): void {
 }
 
 /** What the last-chance buyout pays for one unit of a good: its lowest Bad-tier buyer price
- *  (from any area's buyers of it). */
-export function buyoutPrice(data: GameData, goodId: string): number {
+ *  (from any area's buyers of it), or with the Last Call stamp its lowest Amazing price (with
+ *  Cramazing). */
+export function buyoutPrice(data: GameData, goodId: string, state?: RunState): number {
+  const amazing = state !== undefined && has(state, 'lastCall');
   const prices = Object.values(data.actors).flatMap((a) =>
-    a.role === 'buyer' ? a.goods.filter((g) => g.good === goodId).map((g) => g.prices.bad ?? g.prices.good) : [],
+    a.role === 'buyer'
+      ? a.goods
+          .filter((g) => g.good === goodId)
+          .map((g) => (amazing ? dealPrice(state, g.prices, 'amazing') : (g.prices.bad ?? g.prices.good)))
+      : [],
   );
   return prices.length ? Math.min(...prices) : 0;
 }
@@ -334,15 +514,16 @@ export function buyoutPrice(data: GameData, goodId: string): number {
  *  sold off at Bad-deal prices before the day ends. Returns the total it would pay, or null. */
 export function buyoutOffer(data: GameData, state: RunState): number | null {
   const q = state.quota;
-  if (state.day < q.dueDay || q.met || state.cash >= q.amount || state.inventory.length === 0) return null;
-  return state.inventory.reduce((sum, it) => sum + buyoutPrice(data, it.good), 0);
+  if (state.day < q.dueDay || q.met || state.inventory.length === 0) return null;
+  if (state.cash + payoutTotal(endOfDayPayouts(state)) >= q.amount) return null;
+  return state.inventory.reduce((sum, it) => sum + buyoutPrice(data, it.good, state), 0);
 }
 
 /** Sell the whole bag at the buyout price. Returns the cash received (0 if there's no offer). */
 export function takeBuyout(data: GameData, state: RunState): number {
   const total = buyoutOffer(data, state);
   if (total === null) return 0;
-  for (const it of state.inventory) recordSale(state, it.paid, buyoutPrice(data, it.good));
+  for (const it of state.inventory) recordSale(state, it.paid, buyoutPrice(data, it.good, state));
   state.inventory = [];
   state.cash += total;
   updateQuota(state);
@@ -355,6 +536,10 @@ export function daysLeft(state: RunState): number {
 
 export function endDay(data: GameData, state: RunState): EndDayResult {
   let result: EndDayResult = 'next';
+  // stamp payouts land before the quota is checked, so they can meet it
+  const payout = payoutTotal(endOfDayPayouts(state));
+  state.cash += payout;
+  state.stats.profit = (state.stats.profit ?? 0) + payout;
   updateQuota(state);
   if (state.day >= state.quota.dueDay) {
     if (!state.quota.met) {
@@ -374,6 +559,9 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
   state.day++;
   state.visited = null;
   state.boughtToday = false;
+  state.soldToday = 0;
+  state.soldGoodsToday = [];
+  state.detoured = null;
   state.stats.daySales = 0;
   startDay(data, state);
   updateQuota(state);

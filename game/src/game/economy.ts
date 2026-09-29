@@ -52,6 +52,14 @@ export function tierPrice(prices: ActorGood['prices'], tier: Tier): number {
   return p;
 }
 
+/** An actor good's price at a tier, with the Cramazing stamp: an Amazing deal's difference from
+ *  the Good price is multiplied by CONFIG.dealer.cramazing (never below $1). */
+export function dealPrice(state: RunState, prices: ActorGood['prices'], tier: Tier): number {
+  const p = tierPrice(prices, tier);
+  if (tier !== 'amazing' || !state.perks.owned.includes('cramazing')) return p;
+  return Math.max(1, prices.good + CONFIG.dealer.cramazing * (p - prices.good));
+}
+
 /** A seller's base daily stock for a good of `category`, picked evenly from CONFIG.stockRange. */
 export function rollStock(r: Rng, category: string): number {
   const range = CONFIG.stockRange[category];
@@ -114,7 +122,8 @@ export function rollMarket(data: GameData, state: RunState): Record<string, Offe
         const roll = r.next(); // drawn either way, so stock rolls don't depend on the deck switch
         const u = CONFIG.tierDeck ? deckCard(state.seed, role, state.quota.index, next[role]++) : roll;
         const tier = tierAt(u, tierWeights(data, state, ag.good, role));
-        const price = seller ? sellerPrice(data, state, ag.good, tierPrice(ag.prices, tier)) : tierPrice(ag.prices, tier);
+        const base = dealPrice(state, ag.prices, tier);
+        const price = seller ? sellerPrice(data, state, ag.good, base) : base;
         if (seller) {
           market[offerKey(actorId, ag.good)] = { tier, price, left: sellerStock(data, state, ag.good, rollStock(r, categoryOf(data, ag.good))) };
           continue;

@@ -1,9 +1,9 @@
 import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
-import { allDeals, dealEnabled, describeDeal, owns } from '../game/dealer';
+import { allDeals, dealEnabled, describeDeal, owns, rarityOf } from '../game/dealer';
 import type { DealerDeal } from '../game/types';
-import { drawStamp, STAMP_SIZE } from './stampArt';
+import { drawStamp, RARITY_LABEL, STAMP_SIZE } from './stampArt';
 
 const COLS = 6;
 const PITCH = STAMP_SIZE + 6;
@@ -51,9 +51,12 @@ export class StampsDialog implements Scene {
 
   private tooltip(ui: Ui, deal: DealerDeal): void {
     const { title, body } = describeDeal(this.app.data, deal, this.app.area);
-    const w = Math.max(ui.font.measure(title), ui.font.measure(body)) + 16;
+    const rarity = RARITY_LABEL[rarityOf(deal)];
+    const titleW = ui.font.measure(title) + (rarity ? 8 + ui.font.measure(rarity.text) : 0);
+    const w = Math.max(titleW, ui.font.measure(body)) + 16;
     ui.tooltip(w, 36, (x, y) => {
       ui.text(title, x, y + 1, C.gold);
+      if (rarity) ui.text(rarity.text, x + 8 + ui.font.measure(title), y + 1, rarity.light);
       ui.text(body, x, y + 13, C.muted);
     });
   }

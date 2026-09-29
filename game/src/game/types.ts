@@ -173,7 +173,15 @@ export type RankedKind = 'bag' | 'stockAll' | 'buyerStockAll' | 'luckAll';
 /** Deal kinds that come once per category (they apply to that category's good in every area). */
 export type CategoryKind = 'discount' | 'stock' | 'buyerStock' | 'luck';
 /** Deal kinds that come once, with no rank or category. */
-export type SingleKind = 'discountAll' | 'dailyDiscount' | 'tip' | 'cantGetEnough';
+export type SingleKind =
+  | 'discountAll' | 'dailyDiscount' | 'tip' | 'cantGetEnough' | 'collector'
+  | 'birdsEye' | 'haggler' | 'fannyPack' | 'packedHouse' | 'cramazing' | 'mixedBag' | 'lastCall'
+  | 'bigTipper' | 'fuzzyDice' | 'sleepingBag' | 'campFire' | 'monocle' | 'detour' | 'vintage'
+  | 'cleanSweep' | 'flipper' | 'perfectPlanner' | 'dumpTruck';
+
+/** How rare a stamp is: rarer ones come up more often as the weeks go by (CONFIG.dealer.rarityOdds). */
+export type Rarity = 'common' | 'rare' | 'epic';
+export const RARITIES: Rarity[] = ['common', 'rare', 'epic'];
 
 /** One upgrade (stamp) the Dealer can sell. */
 export type DealerDeal =
@@ -225,7 +233,7 @@ export interface AreaMove {
 }
 
 export interface RunState {
-  version: 12;
+  version: 13;
   seed: number;
   /** The area the run is in (`areas.json`). */
   area: string;
@@ -258,9 +266,15 @@ export interface RunState {
   /** Set when a quota is met: the Dealer's next visit includes a deal costing at most
    *  CONFIG.dealer.cheapAfterQuota. Optional so saves from before it still load. */
   dealerCheapOwed?: boolean;
-  /** The Dealer's stamp deck: the cards not yet drawn, in order (see rollDealer). Optional so
-   *  older saves still load (they start with a fresh shuffle). */
-  stampDeck?: string[];
+  /** The Dealer's stamp decks, one per rarity: the cards not yet drawn, in order (see rollDealer). */
+  stampDecks?: Partial<Record<Rarity, string[]>>;
+  /** Units sold today (Haggler), and the goods sold today (Mixed Bag). */
+  soldToday?: number;
+  soldGoodsToday?: string[];
+  /** The location left by today's Detour, or null. */
+  detoured?: string | null;
+  /** The location with an extra actor today (Packed House), or null. */
+  packedAt?: string | null;
   /** Ids of the area events whose notice has been shown. Optional so older saves still load. */
   eventsSeen?: string[];
   status: 'active' | 'failed';

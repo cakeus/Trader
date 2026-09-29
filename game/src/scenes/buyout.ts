@@ -1,7 +1,8 @@
 import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
-import { buyoutOffer, takeBuyout } from '../game/run';
+import { owns } from '../game/dealer';
+import { buyoutOffer, endOfDayPayouts, payoutTotal, takeBuyout } from '../game/run';
 
 /** End Day on an unmet quota's due day with goods in the bag: offer to buy the whole bag at
  *  Bad-deal prices, then end the day either way (or go back to trading). */
@@ -13,12 +14,16 @@ export class BuyoutDialog implements Scene {
     const run = app.run!;
     const total = buyoutOffer(app.data, run) ?? 0;
     const n = run.inventory.length;
-    const short = run.quota.amount - run.cash;
-    const after = short - total;
+    // tonight's stamp payouts count toward the quota too
+    const short = run.quota.amount - run.cash - payoutTotal(endOfDayPayouts(run));
+    // with the bag sold, the payouts change (Clean Sweep pays, Fanny Pack doesn't)
+    const payoutAfter = payoutTotal(endOfDayPayouts({ ...run, inventory: [] }));
+    const after = run.quota.amount - run.cash - total - payoutAfter;
     ui.dim(0.55);
 
     const w = 360;
-    const body = `The quota is due tonight and you're $${short} short. A late-night buyer offers to take your whole bag at Bad-deal prices.`;
+    const prices = owns(run, { kind: 'lastCall' }) ? 'Amazing' : 'Bad-deal';
+    const body = `The quota is due tonight and you're $${short} short. A late-night buyer offers to take your whole bag at ${prices} prices.`;
     const lines = ui.font.wrap(body, w - 40);
     const h = 150 + lines.length * ui.font.lineHeight;
     const r = { x: (W - w) / 2, y: (H - h) / 2, w, h };

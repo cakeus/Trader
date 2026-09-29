@@ -1,9 +1,9 @@
 import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
-import { buyDealerDeal, type DealerBlock, dealerBlock, describeDeal } from '../game/dealer';
+import { buyDealerDeal, type DealerBlock, dealerBlock, describeDeal, rarityOf } from '../game/dealer';
 import { drawBag, drawPortrait, STAR_INK } from './common';
-import { drawStamp } from './stampArt';
+import { drawStamp, RARITY_LABEL } from './stampArt';
 
 const ROW_H = 44;
 
@@ -51,6 +51,8 @@ export class DealerDialog implements Scene {
       ui.nine(hot && !block ? 'row_hover' : 'row', row);
       drawStamp(app, ui, o.deal, row.x + 1, row.y + 1);
       ui.text(deal.title, row.x + 50, row.y + 9, o.sold ? C.inkSoft : C.ink);
+      const rarity = RARITY_LABEL[rarityOf(o.deal)];
+      if (rarity) ui.text(rarity.text, row.x + 58 + ui.font.measure(deal.title), row.y + 9, o.sold ? C.inkSoft : rarity.dark);
       ui.text(deal.body, row.x + 50, row.y + 24, C.inkSoft);
 
       const right = row.x + row.w - 10;

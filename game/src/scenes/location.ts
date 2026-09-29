@@ -4,7 +4,10 @@ import { C, type Rect, type TipAction, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
 import { todayEvent, weatherOn } from '../game/events';
 import { owns } from '../game/dealer';
-import { actorsAt, avgPaid, buyBlock, buyoutOffer, buyPrice, canAct, demandApplies, endDay, offer, sellBlock } from '../game/run';
+import {
+  actorsAt, avgPaid, buyBlock, buyoutOffer, buyPrice, canAct, canDetour, demandApplies, detour, endDay, endOfDayPayouts,
+  fullBuyPrice, hagglerMultiplier, nextSellPrice, offer, payoutTotal, sellBlock, sellBonus,
+} from '../game/run';
 import type { Quota, Role, Tier } from '../game/types';
 import { BuyoutDialog } from './buyout';
 import { DealerDialog } from './dealer';
@@ -51,7 +54,8 @@ export class LocationScene implements Scene {
         app.sfx.play('open');
         app.push(new TradeDialog(app, id));
       };
-      const base: Rect = { ...def.slots[i], w: CARD_W, h: CARD_H };
+      // a Packed House's extra actor stands where the Dealer used to
+      const base: Rect = { ...(def.slots[i] ?? def.dealerSlot), w: CARD_W, h: CARD_H };
       const hot = ui.focus(`actor:${id}`, base);
       this.card(ui, actor, base, i, seller ? 'Seller' : 'Buyer', seller ? C.greenLight : C.sky, hot);
       if (hot) {
@@ -102,7 +106,12 @@ export class LocationScene implements Scene {
       glow(4 + Math.round(pulse * 4), 0.15 + 0.3 * pulse);
       glow(2 + Math.round(pulse * 1), 0.45 + 0.45 * pulse);
     }
-    if (ui.button(endBtn, 'End Day', { scale: 2 })) this.tryEndDay();
+    const detouring = canDetour(run);
+    if (ui.button(endBtn, detouring ? 'Detour' : 'End Day', { scale: 2 })) {
+      if (detouring) this.detour();
+      else this.tryEndDay();
+    }
+    if (ui.hover(endBtn)) this.endDayTooltip(ui, detouring);
     drawHud(app, ui);
   }
 
@@ -142,8 +151,10 @@ export class LocationScene implements Scene {
     const rows = a.goods.map((g) => {
       const o = offer(run, actorId, g.good);
       const deal = DEAL_LABEL[o.tier];
+      // the price of the next unit, after the stamps
+      const price = seller ? fullBuyPrice(run, o) : nextSellPrice(run, o, g.good);
       const lines: { text: string; color: string; suffix?: string; suffixColor?: string }[] = [
-        { text: `${data.goods[g.good].name}  $${o.price}`, color: C.cream, suffix: deal?.text, suffixColor: deal?.color },
+        { text: `${data.goods[g.good].name}  $${price}`, color: C.cream, suffix: deal?.text, suffixColor: deal?.color },
       ];
       if (seller ? CONFIG.limitStock : demandApplies(o)) {
         if (!seller && o.capped) {
@@ -155,8 +166,18 @@ export class LocationScene implements Scene {
         }
       }
       // stamp perks: the Daily Discount's half-price first buy, and Tip Jar's progress
-      const first = seller ? buyPrice(run, o) : o.price;
-      if (first < o.price) lines.push({ text: `Daily Discount: first one $${first}`, color: C.cyan });
+      if (seller && buyPrice(run, o) < price) lines.push({ text: `Daily Discount: first one $${buyPrice(run, o)}`, color: C.cyan });
+      if (!seller) {
+        // what's raising (or, with Haggler, cutting) the next sale's price
+        const item = run.inventory.find((it) => it.good === g.good);
+        const bonus = item ? sellBonus(run, item) : 0;
+        const haggle = hagglerMultiplier(run);
+        const parts = [
+          ...(bonus ? [`+${Math.round(bonus * 100)}%`] : []),
+          ...(owns(run, { kind: 'haggler' }) ? [`Haggler x${haggle}`] : []),
+        ];
+        if (parts.length) lines.push({ text: `Stamps: ${parts.join(', ')}`, color: haggle < 1 ? C.redLight : C.cyan });
+      }
       if (!seller && owns(run, { kind: 'cantGetEnough' })) lines.push({ text: `+$${CONFIG.dealer.cantGetEnoughStep} after each sale`, color: C.cyan });
       if (!seller && owns(run, { kind: 'tip' })) {
         const { tip, tipAfter } = CONFIG.dealer;
@@ -192,13 +213,41 @@ export class LocationScene implements Scene {
     }, actions);
   }
 
+  /** What the End Day button does: the Detour, or the stamps that pay out tonight. */
+  private endDayTooltip(ui: Ui, detouring: boolean): void {
+    const run = this.app.run!;
+    const lines: { text: string; color: string }[] = [];
+    if (detouring) {
+      lines.push({ text: 'Detour: go to another place today', color: C.gold });
+      lines.push({ text: 'Only until you buy or sell something', color: C.muted });
+    } else {
+      const p = endOfDayPayouts(run);
+      if (p.fannyPack) lines.push({ text: `Fanny Pack: +$${p.fannyPack}`, color: C.greenLight });
+      if (p.sleepingBag) lines.push({ text: `Sleeping Bag: +$${p.sleepingBag}`, color: C.greenLight });
+      if (p.cleanSweep) lines.push({ text: `Clean Sweep: +$${p.cleanSweep}`, color: C.greenLight });
+      if (lines.length > 1) lines.push({ text: `Total tonight: +$${payoutTotal(p)}`, color: C.gold });
+    }
+    if (lines.length === 0) return;
+    const w = 16 + Math.max(...lines.map((l) => ui.font.measure(l.text)));
+    ui.tooltip(w, 6 + lines.length * 12, (x, y) => lines.forEach((l, i) => ui.text(l.text, x, y + i * 12, l.color)));
+  }
+
+  /** Leave for a second location (the Detour stamp). */
+  private detour(): void {
+    const { app } = this;
+    detour(app.run!);
+    app.save();
+    app.sfx.play('open');
+    app.goto(new MapScene(app));
+  }
+
   private tryEndDay(): void {
     const { app } = this;
     const run = app.run!;
     if (buyoutOffer(app.data, run) !== null) {
       app.push(new BuyoutDialog(app, () => this.doEndDay()));
-    } else if (run.day >= run.quota.dueDay && !run.quota.met && run.cash < run.quota.amount) {
-      const short = run.quota.amount - run.cash;
+    } else if (run.day >= run.quota.dueDay && !run.quota.met && run.cash + payoutTotal(endOfDayPayouts(run)) < run.quota.amount) {
+      const short = run.quota.amount - run.cash - payoutTotal(endOfDayPayouts(run));
       app.push(
         new Confirm(app, 'Last day!', `The quota is due tonight and you're $${short} short. End the day anyway?`,
           'End Day', () => this.doEndDay()),

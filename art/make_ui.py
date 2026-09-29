@@ -224,8 +224,31 @@ def more(S):
         S.set(x, y, hexc("#c8f4a8"))
 
 
+def collector(S):
+    """A postage stamp (perforated edge) with a magnifying glass over its corner."""
+    st = rect(1, 3, 10, 12)
+    perf = {(x, y) for (x, y) in st if (x in (1, 10) and y % 2 == 0) or (y in (3, 14) and x % 2 == 0)}
+    body = st - perf
+    S.fill(body, hexc("#fff4e4"))
+    S.fill({(x, y) for (x, y) in body if x == 9 or y == 13}, hexc("#e2cca8"))
+    inner = rect(3, 5, 6, 8)
+    S.blob(inner, [hexc("#ff9a8a"), hexc("#e8534e"), hexc("#b83a44")], hexc("#5a1a2a"), cuts=(-0.3, 0.4))
+    S.set(4, 6, hexc("#fffaf0"))
+    S.fill(edge(body) - inner, hexc("#8a6a5a"))
+    # the magnifier: glass ring and a handle to the lower right
+    lens = ellipse(11, 5, 3.6, 3.6)
+    S.fill(lens, hexc("#cfe8ec"))
+    S.fill({(x, y) for (x, y) in lens if x + y > 17}, hexc("#a8cad4"))
+    S.fill(edge(lens), hexc("#4a6a7a"))
+    S.set(10, 3, hexc("#ffffff"))
+    S.set(9, 4, hexc("#ffffff"))
+    for (x, y) in ((13, 8), (14, 9), (15, 10), (14, 10), (13, 9)):
+        S.set(x, y, hexc("#7a4a2a"))
+    S.set(14, 8, hexc("#b87a4a"))
+
+
 for n, f in (("coin", coin), ("bag", bag), ("calendar", calendar), ("check", check),
-             ("pin", pin), ("star", star), ("flag", flag), ("tag", tag), ("tip", tip), ("more", more)):
+             ("pin", pin), ("star", star), ("flag", flag), ("tag", tag), ("tip", tip), ("more", more), ("collector", collector)):
     icon(n, f)
 
 # --- cursor (12x14 arrow) -------------------------------------------------------
@@ -254,7 +277,7 @@ S.save("cursor", "ui", scale=12, show=False)
 import os
 from pixelkit import ASSETS, PREVIEWS
 names = ["panel", "panel_dark", "btn", "btn_hover", "btn_down", "btn_disabled", "row", "row_hover",
-         "icon_coin", "icon_bag", "icon_calendar", "icon_check", "icon_pin", "icon_star", "icon_flag", "icon_tag", "icon_tip", "icon_more", "cursor"]
+         "icon_coin", "icon_bag", "icon_calendar", "icon_check", "icon_pin", "icon_star", "icon_flag", "icon_tag", "icon_tip", "icon_more", "icon_collector", "cursor"]
 sheet = Image.new("RGBA", (len(names) * 28 + 4, 30), (120, 150, 130, 255))
 for i, n in enumerate(names):
     im = Image.open(os.path.join(ASSETS, "ui", n + ".png"))

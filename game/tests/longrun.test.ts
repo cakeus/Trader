@@ -192,5 +192,5 @@ ${what} after each day's trading, by week: avg (min–max), over the run-days pl
     CONFIG.dealer.chance = saved.dealer;
     CONFIG.dealer.disabled = saved.disabled;
     expect(true).toBe(true);
-  });
+  }, 120_000);
 });

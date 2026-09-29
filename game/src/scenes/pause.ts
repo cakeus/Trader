@@ -6,6 +6,7 @@ import { C, type Rect, type Ui } from '../engine/ui';
 import {
   debugAdvance, debugAdvanceDay, debugGotoNextArea, debugNextArea, debugSetQuotaMet, updateQuota,
 } from '../game/run';
+import { describeDeal, eligibleDeals, grantDeal } from '../game/dealer';
 import { Confirm } from './common';
 import { MainMenu } from './mainMenu';
 import { showDayEnd } from './location';
@@ -105,10 +106,13 @@ export class OptionsMenu extends SubMenu {
 
 /** Dev-build shortcuts for testing a run. */
 class DebugMenu extends SubMenu {
+  /** Which stamp "Give" hands out (an index into the ones not owned yet). */
+  private pick = 0;
+
   frame(ui: Ui): void {
     const { app } = this;
     const run = app.run!;
-    const { x, w, y: top } = menuPanel(ui, 'Debug', 6, 0, 300);
+    const { x, w, y: top } = menuPanel(ui, 'Debug', 7, 0, 300);
     let y = top;
     const q = run.quota;
     if (ui.button({ x, y, w, h: 26 }, q.met ? 'Mark Quota Incomplete' : 'Mark Quota Complete')) {
@@ -157,6 +161,22 @@ class DebugMenu extends SubMenu {
       run.stars = n === null ? 0 : run.stars + n;
       app.save();
     });
+
+    // pick a stamp with the arrows, then give it for free
+    const deals = eligibleDeals(app.data, run);
+    if (deals.length > 0) {
+      this.pick = ((this.pick % deals.length) + deals.length) % deals.length;
+      const deal = deals[this.pick];
+      if (ui.button({ x, y, w: 26, h: 26 }, '<')) this.pick--;
+      if (ui.button({ x: x + 30, y, w: w - 60, h: 26 }, `Give ${describeDeal(app.data, deal, run.area).title}`)) {
+        grantDeal(app.data, run, deal);
+        app.save();
+      }
+      if (ui.button({ x: x + w - 26, y, w: 26, h: 26 }, '>')) this.pick++;
+    } else {
+      ui.button({ x, y, w, h: 26 }, 'Every stamp owned', { disabled: true });
+    }
+    y += ROW;
 
     if (ui.button({ x, y, w, h: 26 }, 'Back') || ui.key('Escape')) app.pop(this);
   }
