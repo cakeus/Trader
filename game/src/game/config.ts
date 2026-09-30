@@ -93,8 +93,8 @@ export const CONFIG = {
     cantGetEnoughStep: 1,
     /** Haggler: the first sale of the day pays this much extra (0.5 = +50%), less `hagglerStep`
      *  for every unit sold before it that day (down to nothing). Applied last, on top of everything. */
-    hagglerStart: 0.5,
-    hagglerStep: 0.25,
+    hagglerStart: 0.3,
+    hagglerStep: 0.15,
     /** Fanny Pack: $ at the end of the day per different good in the bag. */
     fannyPack: 1,
     /** Mixed Bag: $ tip for the first unit of each good sold in a day. */
@@ -108,12 +108,12 @@ export const CONFIG = {
     /** Monocle: added to the price multiplier of every buy and sell. */
     monocle: 0.25,
     /** Vintage: added to a unit's sell multiplier per day it's been in the bag. */
-    vintagePerDay: 0.1,
+    vintagePerDay: 0.05,
     /** Clean Sweep: $ per bag slot for ending the day with an empty bag. */
     cleanSweep: 1,
-    /** Flipper: added to the sell multiplier of units bought yesterday. */
-    flipper: 0.25,
+    /** Flipper: $ added to the sell price of units bought yesterday. */
+    flipper: 1,
     /** Cramazing: an Amazing deal's difference from the Good price is multiplied by this. */
-    cramazing: 2,
+    cramazing: 1.5,
   },
 };

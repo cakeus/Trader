@@ -69,7 +69,7 @@ export function owns(state: RunState, deal: DealerDeal): boolean {
   return state.perks.owned.includes(dealKey(deal));
 }
 
-/** The deals that affect every good (drawn as purple stamps). */
+/** The deals that affect every good (drawn with a 2x2 grid of the goods). */
 export function isUniversal(deal: DealerDeal): boolean {
   return deal.kind === 'discountAll' || deal.kind === 'stockAll' || deal.kind === 'buyerStockAll' || deal.kind === 'luckAll';
 }
@@ -402,7 +402,7 @@ export function describeDeal(data: GameData, deal: DealerDeal, areaId: string): 
     case 'birdsEye':
       return { title: "Bird's Eye", body: 'See every price on the map.' };
     case 'haggler':
-      return { title: 'Haggler', body: `Sales pay +${pct(d.hagglerStart)}%, ${pct(d.hagglerStep)}% less after each one a day.` };
+      return { title: 'Haggler', body: `Sellers pay +${pct(d.hagglerStart)}% more. Reduce by ${pct(d.hagglerStep)}% each sale.` };
     case 'fannyPack':
       return { title: 'Fanny Pack', body: `End of day: $${d.fannyPack} per different good in your bag.` };
     case 'packedHouse':
@@ -420,7 +420,7 @@ export function describeDeal(data: GameData, deal: DealerDeal, areaId: string): 
     case 'sleepingBag':
       return { title: 'Sleeping Bag', body: `A day without trading pays ${pct(d.sleepingBag)}% of your bag's cost.` };
     case 'campFire':
-      return { title: 'Camp Fire', body: 'The first good you buy each day comes with a free one.' };
+      return { title: 'Camp Fire', body: 'The second good you buy each day is half price.' };
     case 'monocle':
       return { title: 'Monocle', body: `Every buy and sell price is ${pct(d.monocle)}% higher.` };
     case 'detour':
@@ -430,7 +430,7 @@ export function describeDeal(data: GameData, deal: DealerDeal, areaId: string): 
     case 'cleanSweep':
       return { title: 'Clean Sweep', body: `End the day with an empty bag: $${d.cleanSweep} per bag slot.` };
     case 'flipper':
-      return { title: 'Flipper', body: `Goods bought yesterday sell for ${pct(d.flipper)}% more.` };
+      return { title: 'Flipper', body: `Goods bought yesterday sell for $${d.flipper} more.` };
     case 'perfectPlanner':
       return { title: 'Perfect Planner', body: 'Your priciest good always has a buyer.' };
     case 'dumpTruck':

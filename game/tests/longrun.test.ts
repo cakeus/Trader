@@ -89,7 +89,8 @@ function simulate(profile: Profile): Summary {
       addTo(week.value, s.inventory.reduce((v, it) => v + it.paid, 0));
       sum.cash += s.cash;
       sum.days++;
-      if (endDay(data, s) === 'failed') break;
+      endDay(data, s);
+      if (s.status !== 'active') break;
     }
     for (let q = 0; q < Math.min(quotas, s.stats.quotasMet); q++) sum.alive[q]++;
     sum.firstMet[firstDay]++;

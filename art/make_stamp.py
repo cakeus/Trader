@@ -1,5 +1,5 @@
-"""Postage-stamp backgrounds for Nox's Stamps -> assets/ui/stamp.png (common), stamp_blue.png
-(rare), stamp_gold.png (epic) and stamp_all.png (all-goods deals, purple).
+"""Postage-stamp backgrounds for Nox's Stamps, one per rarity -> assets/ui/stamp.png (common),
+stamp_blue.png (rare) and stamp_gold.png (epic).
 
 42x42: perforated paper edge with a tinted outline, and an inner frame around a
 32x32 window where the game draws the stamp's icon (at a 5px inset).
@@ -49,18 +49,16 @@ def stamp(name, outline, paper, paper_hi, paper_lo, frame, frame_hi, window):
 
 stamp("stamp", hexc("#8a5a4a"), hexc("#fbf1dc"), hexc("#fffaf0"), hexc("#ead8bc"),
       hexc("#c86a5a"), hexc("#e8a090"), hexc("#fff6e8"))
-stamp("stamp_all", hexc("#4a2a6a"), hexc("#f4eafc"), hexc("#fffaff"), hexc("#dccaec"),
-      hexc("#8a4ab8"), hexc("#c49ae4"), hexc("#fbf4ff"))
 stamp("stamp_blue", hexc("#2a4a7a"), hexc("#e4f0fc"), hexc("#f6fbff"), hexc("#c4d8ee"),
       hexc("#3a82d0"), hexc("#8ac0f0"), hexc("#f4faff"))
 stamp("stamp_gold", hexc("#7a4a14"), hexc("#fff0c8"), hexc("#fffae4"), hexc("#f0d890"),
       hexc("#e89a2a"), hexc("#ffd870"), hexc("#fffbea"))
 
 # contact sheet on the dialog row colour and on the dark tooltip colour
-sheet = Image.new("RGBA", (4 * 48 + 8, 2 * 52), hexc("#f3e2c4"))
+sheet = Image.new("RGBA", (3 * 48 + 8, 2 * 52), hexc("#f3e2c4"))
 for y, bg in enumerate((hexc("#f3e2c4"), hexc("#3b2f55"))):
     sheet.paste(Image.new("RGBA", (sheet.width, 52), bg), (0, y * 52))
-    for i, n in enumerate(("stamp", "stamp_blue", "stamp_gold", "stamp_all")):
+    for i, n in enumerate(("stamp", "stamp_blue", "stamp_gold")):
         im = Image.open(os.path.join(ASSETS, "ui", n + ".png"))
         sheet.alpha_composite(im, (8 + i * 48, 5 + y * 52))
 sheet.resize((sheet.width * 4, sheet.height * 4), Image.NEAREST).save(

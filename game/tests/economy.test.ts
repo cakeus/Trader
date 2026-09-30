@@ -11,7 +11,7 @@ import {
   bustlePrice, dealPrice, deckCard, deckCards, extraDemand, offerPrice, rollMarket, rollStock, rollTier, tierAt, tierPrice, tierWeights,
 } from '../src/game/economy';
 import {
-  avgPaid, BASE_STARS, buy, buyBlock, buyPrice, buyoutOffer, buyoutPrice, buyUnits, canAct, canDetour, CAPACITY, detour, endDay,
+  avgPaid, BASE_STARS, buy, buyBlock, buyPrice, buyoutOffer, buyoutPrice, canAct, canDetour, CAPACITY, detour, endDay,
   endOfDayPayouts, FIRST_QUOTA, guaranteedGood, hagglerMultiplier, maxBuy, maxSell, newRun, nextSellPrice, offer, quotaFor, rescueGood,
   rollBadDay, sell, sellBlock, sellPrice, sellUnits, START_CASH, takeBuyout, updateQuota, visit,
 } from '../src/game/run';
@@ -1680,8 +1680,12 @@ describe('rare stamps', () => {
     give(s, 'vintage');
     expect(sellPrice(s, o, { good: 'hammer', paid: 1, day: 2 })).toBe(13);
     expect(sellPrice(s, o, { good: 'hammer', paid: 1, day: 5 })).toBe(10);
-    give(s, 'flipper');
-    expect(sellPrice(s, o, { good: 'hammer', paid: 1, day: 4 })).toBe(14); // +10% vintage, +25% flipper
+    const t = newRun(data, 1);
+    t.day = 5;
+    give(t, 'flipper');
+    expect(sellPrice(t, o, { good: 'hammer', paid: 1, day: 4 })).toBe(10 + CONFIG.dealer.flipper); // bought yesterday
+    expect(sellPrice(t, o, { good: 'hammer', paid: 1, day: 3 })).toBe(10);
+    expect(sellPrice(t, o, { good: 'hammer', paid: 1, day: 5 })).toBe(10);
   });
 
   it('Fuzzy Dice: a sale can turn the buyer Amazing for the rest of the day', () => {
@@ -1706,26 +1710,35 @@ describe('rare stamps', () => {
     }
   });
 
-  it("Camp Fire: the day's first unit comes with a free copy, if there's room", () => {
+  it("Camp Fire: the day's second unit is half price (rounded up)", () => {
     const s = newRun(data, 1);
     give(s, 'campFire');
     const seller = withActor(s, 'supplier', 'strawberry');
     const o = offer(s, seller, 'strawberry');
     o.left = 5;
-    const cash = s.cash;
-    expect(buyUnits(data, s, seller, 'strawberry', 1)).toEqual({ n: 1, free: 1 });
-    expect(s.inventory.map((it) => it.paid)).toEqual([o.price, o.price]);
-    expect(s.cash).toBe(cash - o.price);
-    expect(o.left).toBe(4);
-    expect(buyUnits(data, s, seller, 'strawberry', 1)).toEqual({ n: 1, free: 0 });
-    // shift-click never overfills the bag
+    o.price = 3;
+    s.cash = 99;
+    expect(buy(data, s, seller, 'strawberry', 3)).toBe(3);
+    expect(s.inventory.map((it) => it.paid)).toEqual([3, 2, 3]);
+    expect(s.cash).toBe(99 - 8);
+    expect(o.left).toBe(2);
+    // with the Daily Discount too, the first two are both half price
     const t = newRun(data, 1);
     give(t, 'campFire');
+    give(t, 'dailyDiscount');
     const ts = withActor(t, 'supplier', 'strawberry');
-    offer(t, ts, 'strawberry').left = 9;
-    t.cash = 99;
-    buyUnits(data, t, ts, 'strawberry', maxBuy(t, ts, 'strawberry'));
-    expect(t.inventory).toHaveLength(t.capacity);
+    const to = offer(t, ts, 'strawberry');
+    to.left = 9;
+    to.price = 4;
+    t.cash = 7; // 2 + 2 + 3 (not a full $4)
+    expect(maxBuy(t, ts, 'strawberry')).toBe(2);
+    t.cash = 8;
+    expect(maxBuy(t, ts, 'strawberry')).toBe(3);
+    buy(data, t, ts, 'strawberry', 3);
+    expect(t.inventory.map((it) => it.paid)).toEqual([2, 2, 4]);
+    // a new day starts the count again
+    endDay(data, t);
+    expect(t.unitsBoughtToday).toBe(0);
   });
 
   it('Mixed Bag tips once per good a day, and Big Tipper triples every tip', () => {

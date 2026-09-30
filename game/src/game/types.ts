@@ -290,6 +290,8 @@ export interface RunState {
   /** Has anything been bought today? (The Daily Discount stamp halves the first buy.) Optional so
    *  older saves still load. */
   boughtToday?: boolean;
+  /** Units bought today (Camp Fire halves the second). Optional so older saves still load. */
+  unitsBoughtToday?: number;
   /** Has the Dealer made his (guaranteed) first visit yet? */
   dealerSeen: boolean;
   /** Set when a quota is met: the Dealer's next visit includes a deal costing at most
@@ -314,7 +316,7 @@ export interface RunState {
   badWeek?: number;
   /** Ids of the area events whose notice has been shown. Optional so older saves still load. */
   eventsSeen?: string[];
-  status: 'active' | 'failed';
+  status: 'active' | 'failed' | 'won';
 }
 
-export type EndDayResult = 'next' | 'quotaPassed' | 'failed';
+export type EndDayResult = 'next' | 'quotaPassed' | 'failed' | 'won';

@@ -2,7 +2,7 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { daysLeft } from '../game/run';
-import type { ActorDef, Role, Weather, WeatherSpots } from '../game/types';
+import type { ActorDef, Role, RunState, Weather, WeatherSpots } from '../game/types';
 import { PauseMenu } from './pause';
 import { StampsDialog } from './stamps';
 
@@ -371,4 +371,24 @@ export class Confirm implements Scene {
       this.onYes();
     }
   }
+}
+
+/** The run's stats as a two-column table centred on `cx`, one row per 13px from `y`. Returns
+ *  the y below it. */
+export function drawRunStats(ui: Ui, run: RunState, cx: number, y: number): number {
+  const s = run.stats;
+  const avg = s.sold > 0 ? (s.profit ?? 0) / s.sold : 0;
+  const rows = [
+    ['Days traded', `${run.day}`],
+    ['Quotas met', `${s.quotasMet}`],
+    ['Goods sold', `${s.sold}`],
+    ['Avg profit', `${avg < 0 ? '-' : ''}$${Math.abs(avg).toFixed(2)}`],
+    ['Total losses', `$${s.losses ?? 0}`],
+    ['Best day sales', `$${s.bestDaySales ?? 0}`],
+  ];
+  rows.forEach(([k, v], i) => {
+    ui.text(k, cx - 90, y + i * 13, C.inkSoft);
+    ui.text(v, cx + 90, y + i * 13, C.ink, { align: 'right' });
+  });
+  return y + rows.length * 13;
 }

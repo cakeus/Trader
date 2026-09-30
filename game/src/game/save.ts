@@ -29,3 +29,29 @@ export function clearRun(): void {
     // ignore
   }
 }
+
+const HIGHSCORE_KEY = 'trader.highscore';
+
+/** The best final cash of any won run, or null before the first win. */
+export function loadHighScore(): number | null {
+  try {
+    const n = Number(localStorage.getItem(HIGHSCORE_KEY) ?? NaN);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Record a won run's score. Returns the best before it, and whether this one beat it. */
+export function recordHighScore(score: number): { best: number | null; isNew: boolean } {
+  const best = loadHighScore();
+  const isNew = best === null || score > best;
+  if (isNew) {
+    try {
+      localStorage.setItem(HIGHSCORE_KEY, String(score));
+    } catch {
+      // storage unavailable — the high score just won't persist
+    }
+  }
+  return { best, isNew };
+}

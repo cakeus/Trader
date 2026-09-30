@@ -3,8 +3,8 @@ import { seedLabel } from '../engine/rng';
 import { H, W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
 import type { RunState } from '../game/types';
-import { drawBackground } from './common';
-import { MainMenu } from './mainMenu';
+import { drawBackground, drawRunStats } from './common';
+import { MainMenu, startNewRun } from './mainMenu';
 
 export class GameOver implements Scene {
   constructor(private app: App, private run: RunState) {}
@@ -22,26 +22,17 @@ export class GameOver implements Scene {
       align: 'center',
     });
     ui.text(`but only had $${run.cash}.`, W / 2, r.y + 68, C.ink, { align: 'center' });
-
-    const s = run.stats;
-    const avg = s.sold > 0 ? (s.profit ?? 0) / s.sold : 0;
-    const stats = [
-      ['Days traded', `${run.day}`],
-      ['Quotas met', `${s.quotasMet}`],
-      ['Goods sold', `${s.sold}`],
-      ['Avg profit', `${avg < 0 ? '-' : ''}$${Math.abs(avg).toFixed(2)}`],
-      ['Total losses', `$${s.losses ?? 0}`],
-      ['Best day sales', `$${s.bestDaySales ?? 0}`],
-    ];
-    stats.forEach(([k, v], i) => {
-      const y = r.y + 92 + i * 13;
-      ui.text(k, W / 2 - 90, y, C.inkSoft);
-      ui.text(v, W / 2 + 90, y, C.ink, { align: 'right' });
-    });
+    drawRunStats(ui, run, W / 2, r.y + 92);
     ui.text(`Seed ${seedLabel(run.seed)}`, W / 2, r.y + 176, C.muted, { align: 'center' });
+    endButtons(this.app, ui, r.y + h - 40);
+  }
+}
 
-    if (ui.button({ x: W / 2 - 70, y: r.y + h - 40, w: 140, h: 26 }, 'Main Menu') || ui.key('Enter')) {
-      this.app.goto(new MainMenu(this.app));
-    }
+/** Play Again and Main Menu, side by side at `y` (Enter goes to the menu). */
+export function endButtons(app: App, ui: Ui, y: number): void {
+  if (ui.button({ x: W / 2 - 145, y, w: 140, h: 26 }, 'Play Again')) {
+    startNewRun(app);
+  } else if (ui.button({ x: W / 2 + 5, y, w: 140, h: 26 }, 'Main Menu') || ui.key('Enter')) {
+    app.goto(new MainMenu(app));
   }
 }

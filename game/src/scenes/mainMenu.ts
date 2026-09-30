@@ -3,7 +3,7 @@ import { randomSeed } from '../engine/rng';
 import { H, W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
 import { newRun } from '../game/run';
-import { loadRun } from '../game/save';
+import { loadHighScore, loadRun } from '../game/save';
 import { areasInOrder } from '../game/area';
 import { Confirm, drawBackground, drawWeather } from './common';
 import { LocationScene } from './location';
@@ -19,6 +19,14 @@ const SPRING = 40; // pull back toward the home spot
 const DAMPING = 7; // velocity decay per second
 const STEP = 1 / 120;
 
+/** Start a fresh run on a new seed and go to its map. */
+export function startNewRun(app: App): void {
+  app.run = newRun(app.data, randomSeed());
+  app.save();
+  app.sfx.play('day');
+  app.goto(new MapScene(app));
+}
+
 interface Floater {
   x: number; // offset from home
   y: number;
@@ -28,6 +36,7 @@ interface Floater {
 
 export class MainMenu implements Scene {
   private hasSave: boolean;
+  private highScore = loadHighScore();
   private floaters: Floater[] = SPOTS.map(() => ({ x: 0, y: 0, vx: 0, vy: 0 }));
   private lastT = -1;
   private acc = 0;
@@ -62,6 +71,9 @@ export class MainMenu implements Scene {
     const bx = W / 2 - 80;
     if (ui.button({ x: bx, y: 214, w: 160, h: 30 }, 'New Run')) this.newRun();
     if (ui.button({ x: bx, y: 254, w: 160, h: 30 }, 'Continue', { disabled: !this.hasSave })) this.continue();
+    if (this.highScore !== null) {
+      ui.text(`High score $${this.highScore}`, W / 2, 298, C.cream, { align: 'center', shadow: C.shadow });
+    }
 
     ui.text('v0.1 prototype', W / 2, H - 20, C.muted, { align: 'center' });
   }
@@ -102,13 +114,7 @@ export class MainMenu implements Scene {
   }
 
   private newRun(): void {
-    const start = () => {
-      const app = this.app;
-      app.run = newRun(app.data, randomSeed());
-      app.save();
-      app.sfx.play('day');
-      app.goto(new MapScene(app));
-    };
+    const start = () => startNewRun(this.app);
     if (this.hasSave) {
       this.app.push(new Confirm(this.app, 'Start fresh?', 'Your current run will be lost.', 'New Run', start));
     } else {

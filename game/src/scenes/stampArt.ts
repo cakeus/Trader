@@ -33,11 +33,11 @@ const DEAL_ICON: Partial<Record<DealerDeal['kind'], string>> = {
   dumpTruck: 'icon_truck',
 };
 
-/** Stamp backgrounds by rarity (all-goods deals use the purple one). */
+/** Stamp backgrounds by rarity. */
 const FRAME: Record<Rarity, string> = { common: 'stamp', rare: 'stamp_blue', epic: 'stamp_gold' };
 
 /** Every image a stamp can draw (for preloading). */
-export const STAMP_IMAGES = [...Object.values(DEAL_ICON), ...Object.values(FRAME), 'stamp_all'].map((n) => `assets/ui/${n}.png`);
+export const STAMP_IMAGES = [...Object.values(DEAL_ICON), ...Object.values(FRAME)].map((n) => `assets/ui/${n}.png`);
 
 /** How each rarity is labelled, in its color on light panels (`dark`) and dark tooltips (`light`).
  *  Common isn't labelled. */
@@ -48,11 +48,11 @@ export const RARITY_LABEL: Record<Rarity, { text: string; dark: string; light: s
 };
 
 /** A deal drawn as a postage stamp (STAMP_SIZE square), framed by its rarity: the icon of its
- *  category's good in the run's area, a 2x2 grid of the area's goods (on a purple stamp) for
- *  all-goods deals, or a UI icon. */
+ *  category's good in the run's area, a 2x2 grid of the area's goods for all-goods deals, or a
+ *  UI icon. */
 export function drawStamp(app: App, ui: Ui, deal: DealerDeal, x: number, y: number): void {
   const all = isUniversal(deal);
-  ui.image(`assets/ui/${all ? 'stamp_all' : FRAME[rarityOf(deal)]}.png`, x, y);
+  ui.image(`assets/ui/${FRAME[rarityOf(deal)]}.png`, x, y);
   const ix = x + 5;
   const iy = y + 5;
   const good = dealGood(app.data, deal, app.area);

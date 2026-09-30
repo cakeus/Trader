@@ -11,6 +11,7 @@ import { Confirm } from './common';
 import { MainMenu } from './mainMenu';
 import { showDayEnd } from './location';
 import { MapScene } from './map';
+import { showVictory } from './victory';
 
 const MENU_W = 240;
 const ROW = 34;
@@ -125,7 +126,9 @@ class DebugMenu extends SubMenu {
     const label = day === null ? 'Advance (quota not met)' : `Advance to Day ${day}`;
     if (ui.button({ x, y, w, h: 26 }, label, { disabled: day === null })) {
       const prevArea = run.area;
-      showDayEnd(app, debugAdvance(app.data, run), prevArea);
+      const passed = debugAdvance(app.data, run);
+      if (run.status === 'won') showVictory(app, run);
+      else showDayEnd(app, passed, prevArea);
       return;
     }
     y += ROW;

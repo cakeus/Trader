@@ -1,0 +1,54 @@
+import type { App, Scene } from '../app';
+import { seedLabel } from '../engine/rng';
+import { H, W } from '../engine/screen';
+import { C, type Ui } from '../engine/ui';
+import { weatherOn } from '../game/events';
+import { recordHighScore } from '../game/save';
+import type { RunState } from '../game/types';
+import { drawBackground, drawRunStats, drawWeather } from './common';
+import { endButtons } from './gameOver';
+
+/** End a won run: clear the save and show the win screen. */
+export function showVictory(app: App, run: RunState): void {
+  app.endRun();
+  app.sfx.play('quota');
+  app.goto(new Victory(app, run));
+}
+
+/** The win screen: the last quota met, the final cash as the score against the high score. */
+export class Victory implements Scene {
+  private best: number | null;
+  private isNew: boolean;
+
+  constructor(private app: App, private run: RunState) {
+    // recorded once, so the comparison stays put while the screen is up
+    ({ best: this.best, isNew: this.isNew } = recordHighScore(run.cash));
+  }
+
+  frame(ui: Ui): void {
+    const { run, app } = this;
+    const area = app.data.areas[run.area];
+    drawBackground(ui, area?.map ?? 'assets/bg/map.png');
+    drawWeather(ui, weatherOn(app.data, run.area, run.day), area);
+    ui.dim(0.5);
+    const w = 380;
+    const h = 300;
+    const r = { x: (W - w) / 2, y: (H - h) / 2, w, h };
+    ui.nine('panel', r);
+    const bob = Math.round(Math.sin(ui.t * 4) * 2);
+    ui.image('assets/ui/icon_flag.png', W / 2 - 110, r.y + 20 + bob);
+    ui.image('assets/ui/icon_flag.png', W / 2 + 94, r.y + 20 - bob);
+    ui.text('You win!', W / 2, r.y + 16, C.gold, { align: 'center', scale: 3 });
+    ui.text(`You met every quota through Day ${run.day}.`, W / 2, r.y + 56, C.ink, { align: 'center' });
+    ui.text(`Final cash $${run.cash}`, W / 2, r.y + 76, C.ink, { align: 'center', scale: 2 });
+    if (this.isNew) {
+      ui.text('New high score!', W / 2, r.y + 100 + bob, C.gold, { align: 'center', scale: 2 });
+      if (this.best !== null) ui.text(`Previous best $${this.best}`, W / 2, r.y + 122, C.inkSoft, { align: 'center' });
+    } else {
+      ui.text(`High score $${this.best}`, W / 2, r.y + 104, C.inkSoft, { align: 'center' });
+    }
+    const y = drawRunStats(ui, run, W / 2, r.y + 144);
+    ui.text(`Seed ${seedLabel(run.seed)}`, W / 2, y + 8, C.muted, { align: 'center' });
+    endButtons(app, ui, r.y + h - 40);
+  }
+}

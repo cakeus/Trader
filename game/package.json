@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "sim": "vitest run tests/longrun.test.ts --reporter=verbose",
+    "rares": "vitest run tests/rares.test.ts --reporter=verbose",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

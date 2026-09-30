@@ -12,6 +12,8 @@ export const CAPACITY = 4;
 export const FIRST_QUOTA = 20;
 export const QUOTA_DAYS = 7;
 export const RUN_LOCATIONS = 3;
+/** The run's last day: meeting the quota due then wins the run. */
+export const LAST_DAY = 63;
 /** Base stars for meeting any quota. */
 export const BASE_STARS = 5;
 /** Bonus stars per day a quota is met early. */
@@ -253,11 +255,31 @@ export function fullBuyPrice(state: RunState, o: Offer): number {
   return Math.max(1, Math.round(o.price * (1 + monocle(state))));
 }
 
-/** What the next unit bought from a seller's offer costs: with the Daily Discount stamp, the day's
- *  first unit is half price (rounded up, min $1). */
-export function buyPrice(state: RunState, o: Offer): number {
+/** Units bought so far today (saves from before the count only know whether anything was). */
+function unitsBoughtToday(state: RunState): number {
+  return state.unitsBoughtToday ?? (state.boughtToday ? 1 : 0);
+}
+
+/** What a unit from a seller's offer costs when `before` units have already been bought today: with
+ *  the Daily Discount stamp the day's first unit is half price, and with Camp Fire the second is
+ *  (rounded up, min $1). */
+function unitPrice(state: RunState, o: Offer, before: number): number {
   const p = fullBuyPrice(state, o);
-  return !state.boughtToday && has(state, 'dailyDiscount') ? Math.max(1, Math.ceil(p / 2)) : p;
+  const half = (before === 0 && has(state, 'dailyDiscount')) || (before === 1 && has(state, 'campFire'));
+  return half ? Math.max(1, Math.ceil(p / 2)) : p;
+}
+
+/** What the next unit bought from a seller's offer costs (see unitPrice). */
+export function buyPrice(state: RunState, o: Offer): number {
+  return unitPrice(state, o, unitsBoughtToday(state));
+}
+
+/** The stamp that makes the next unit bought cheaper today, if any. */
+export function buyDiscountStamp(state: RunState): 'dailyDiscount' | 'campFire' | null {
+  const before = unitsBoughtToday(state);
+  if (before === 0 && has(state, 'dailyDiscount')) return 'dailyDiscount';
+  if (before === 1 && has(state, 'campFire')) return 'campFire';
+  return null;
 }
 
 /** The Haggler stamp's multiplier on the next sale today: 1 + hagglerStart, less hagglerStep per
@@ -268,20 +290,24 @@ export function hagglerMultiplier(state: RunState): number {
   return Math.max(0, 1 + hagglerStart - hagglerStep * (state.soldToday ?? 0));
 }
 
-/** The bonuses added to a bag unit's sell price multiplier: Monocle, Vintage (per day in the
- *  bag) and Flipper (bought yesterday). */
+/** The bonuses added to a bag unit's sell price multiplier: Monocle and Vintage (per day in the
+ *  bag). */
 export function sellBonus(state: RunState, item: BagItem): number {
-  const d = CONFIG.dealer;
   let bonus = monocle(state);
-  if (has(state, 'vintage')) bonus += d.vintagePerDay * Math.max(0, state.day - item.day);
-  if (has(state, 'flipper') && item.day === state.day - 1) bonus += d.flipper;
+  if (has(state, 'vintage')) bonus += CONFIG.dealer.vintagePerDay * Math.max(0, state.day - item.day);
   return bonus;
 }
 
-/** What a buyer's offer pays for one bag unit: its price times 1 + `sellBonus` (rounded), then
- *  times Haggler's multiplier (rounded). */
+/** The $ the Flipper stamp adds to a bag unit's sell price (for units bought yesterday). */
+export function flipperBonus(state: RunState, item: BagItem): number {
+  return has(state, 'flipper') && item.day === state.day - 1 ? CONFIG.dealer.flipper : 0;
+}
+
+/** What a buyer's offer pays for one bag unit: its price times 1 + `sellBonus` (rounded), plus
+ *  Flipper's $, then times Haggler's multiplier (rounded). */
 export function sellPrice(state: RunState, o: Offer, item: BagItem): number {
-  return Math.round(Math.round(o.price * (1 + sellBonus(state, item))) * hagglerMultiplier(state));
+  const base = Math.round(o.price * (1 + sellBonus(state, item))) + flipperBonus(state, item);
+  return Math.round(base * hagglerMultiplier(state));
 }
 
 /** What selling one unit of a good to a buyer's offer pays right now (the oldest unit in the bag
@@ -317,10 +343,12 @@ export function sellBlock(state: RunState, actorId: string, goodId: string): Tra
 export function maxBuy(state: RunState, actorId: string, goodId: string): number {
   const o = offer(state, actorId, goodId);
   if (o.price <= 0) return 0;
-  const first = buyPrice(state, o);
-  const afford = state.cash < first ? 0 : 1 + Math.floor((state.cash - first) / fullBuyPrice(state, o));
-  const n = Math.min(freeSlots(state), afford);
-  return Math.max(0, CONFIG.limitStock ? Math.min(n, o.left) : n);
+  const cap = Math.max(0, CONFIG.limitStock ? Math.min(freeSlots(state), o.left) : freeSlots(state));
+  const before = unitsBoughtToday(state);
+  let cash = state.cash;
+  let n = 0;
+  while (n < cap && cash >= unitPrice(state, o, before + n)) cash -= unitPrice(state, o, before + n++);
+  return n;
 }
 
 export function maxSell(state: RunState, actorId: string, goodId: string): number {
@@ -342,39 +370,22 @@ export function canAct(data: GameData, state: RunState, locationId: string): boo
   return trade || dealer;
 }
 
-/** What a purchase did: units paid for, and free ones from the Camp Fire stamp. */
-export interface Purchase {
-  n: number;
-  free: number;
-}
-
-/** Buy up to `qty` units; returns how many were bought. */
+/** Buy up to `qty` units, each at `buyPrice` (the Daily Discount and Camp Fire halve the day's
+ *  first and second units); returns how many were bought. */
 export function buy(data: GameData, state: RunState, actorId: string, goodId: string, qty = 1): number {
-  return buyUnits(data, state, actorId, goodId, qty).n;
-}
-
-/** Buy up to `qty` units. With Camp Fire, the day's first unit comes with a free copy (same price
- *  paid, if there's room; it doesn't use up the seller's stock). */
-export function buyUnits(data: GameData, state: RunState, actorId: string, goodId: string, qty = 1): Purchase {
-  const done: Purchase = { n: 0, free: 0 };
-  if (data.actors[actorId]?.role !== 'supplier') return done;
+  if (data.actors[actorId]?.role !== 'supplier') return 0;
   const n = Math.min(qty, maxBuy(state, actorId, goodId));
   const o = offer(state, actorId, goodId);
-  for (let i = 0; i < n && freeSlots(state) > 0; i++) {
+  for (let i = 0; i < n; i++) {
     const paid = buyPrice(state, o);
-    const first = !state.boughtToday;
     state.inventory.push({ good: goodId, paid, day: state.day });
     state.cash -= paid;
+    state.unitsBoughtToday = unitsBoughtToday(state) + 1;
     state.boughtToday = true;
-    done.n++;
-    if (first && has(state, 'campFire') && freeSlots(state) > 0) {
-      state.inventory.push({ good: goodId, paid, day: state.day });
-      done.free++;
-    }
   }
-  if (CONFIG.limitStock) o.left -= done.n;
-  state.stats.bought += done.n;
-  return done;
+  if (CONFIG.limitStock) o.left -= n;
+  state.stats.bought += n;
+  return n;
 }
 
 /** What a sale did: units sold, tips paid, and whether Fuzzy Dice turned the buyer Amazing. */
@@ -583,6 +594,11 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
     }
     state.stats.quotasMet++;
     payStars(state, state.quota);
+    if (state.day >= LAST_DAY) {
+      // the last quota: the run is won, and ends here (the day and bag stay as they were)
+      state.status = 'won';
+      return 'won';
+    }
     state.quota = quotaFor(state.quota.index + 1);
     state.deck = { supplier: 0, buyer: 0 }; // a fresh tier deck for each quota
     result = 'quotaPassed';
@@ -594,6 +610,7 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
   state.day++;
   state.visited = null;
   state.boughtToday = false;
+  state.unitsBoughtToday = 0;
   state.soldToday = 0;
   state.soldGoodsToday = [];
   state.detoured = null;
@@ -663,14 +680,16 @@ export function debugAdvanceDay(state: RunState): number | null {
   return q.met ? quotaFor(q.index + 1).dueDay : null;
 }
 
-/** Debug: end days without trading until `debugAdvanceDay`. Returns the quota passed on the
- *  way, if any. */
+/** Debug: end days without trading until `debugAdvanceDay` (or the run is won). Returns the
+ *  quota passed on the way, if any. */
 export function debugAdvance(data: GameData, state: RunState): Quota | null {
   const day = debugAdvanceDay(state);
   let passed: Quota | null = null;
   while (day !== null && state.day < day) {
     const q = state.quota;
-    if (endDay(data, state) === 'quotaPassed') passed = q;
+    const res = endDay(data, state);
+    if (res === 'quotaPassed') passed = q;
+    if (res === 'won') break;
   }
   return passed;
 }

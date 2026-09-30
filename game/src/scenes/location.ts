@@ -5,7 +5,7 @@ import { CONFIG } from '../game/config';
 import { todayEvent, weatherOn } from '../game/events';
 import { owns } from '../game/dealer';
 import {
-  actorsAt, avgPaid, buyBlock, buyoutOffer, buyPrice, canAct, canDetour, demandApplies, detour, endDay, endOfDayPayouts,
+  actorsAt, avgPaid, buyBlock, buyDiscountStamp, flipperBonus, buyoutOffer, buyPrice, canAct, canDetour, demandApplies, detour, endDay, endOfDayPayouts,
   fullBuyPrice, hagglerMultiplier, nextSellPrice, offer, payoutTotal, sellBlock, sellBonus,
 } from '../game/run';
 import type { Quota, Role, Tier } from '../game/types';
@@ -13,6 +13,7 @@ import { BuyoutDialog } from './buyout';
 import { DealerDialog } from './dealer';
 import { Confirm, drawBackground, drawBag, drawHud, drawPortrait, drawWeather, HUD_H } from './common';
 import { GameOver } from './gameOver';
+import { showVictory } from './victory';
 import { MapScene } from './map';
 import { QuotaResult } from './quotaResult';
 import { AreaTransition } from './arrival';
@@ -170,15 +171,22 @@ export class LocationScene implements Scene {
           lines.push({ text: qty, color: o.left > 0 ? C.muted : C.redLight });
         }
       }
-      // stamp perks: the Daily Discount's half-price first buy, and Tip Jar's progress
-      if (seller && buyPrice(run, o) < price) lines.push({ text: `Daily Discount: first one $${buyPrice(run, o)}`, color: C.cyan });
+      // stamp perks: the Daily Discount's half-price first buy, Camp Fire's half-price second one,
+      // and Tip Jar's progress
+      const cheaper = buyDiscountStamp(run);
+      if (seller && cheaper && buyPrice(run, o) < price) {
+        const label = cheaper === 'dailyDiscount' ? 'Daily Discount: first one' : 'Camp Fire: next one';
+        lines.push({ text: `${label} $${buyPrice(run, o)}`, color: C.cyan });
+      }
       if (!seller) {
         // what's raising (or, with Haggler, cutting) the next sale's price
         const item = run.inventory.find((it) => it.good === g.good);
         const bonus = item ? sellBonus(run, item) : 0;
+        const flip = item ? flipperBonus(run, item) : 0;
         const haggle = hagglerMultiplier(run);
         const parts = [
           ...(bonus ? [`+${Math.round(bonus * 100)}%`] : []),
+          ...(flip ? [`+$${flip}`] : []),
           ...(owns(run, { kind: 'haggler' }) ? [`Haggler x${haggle}`] : []),
         ];
         if (parts.length) lines.push({ text: `Stamps: ${parts.join(', ')}`, color: haggle < 1 ? C.redLight : C.cyan });
@@ -272,6 +280,10 @@ export class LocationScene implements Scene {
       app.endRun();
       app.sfx.play('fail');
       app.goto(new GameOver(app, run));
+      return;
+    }
+    if (res === 'won') {
+      showVictory(app, run);
       return;
     }
     showDayEnd(app, res === 'quotaPassed' ? prev : null, prevArea);

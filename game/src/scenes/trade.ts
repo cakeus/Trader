@@ -2,7 +2,7 @@ import type { App, Scene } from '../app';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
-import { buyBlock, buyPrice, buyUnits, countOf, demandApplies, maxBuy, maxSell, nextSellPrice, offer, sellBlock, sellUnits, type TradeBlock } from '../game/run';
+import { buy, buyBlock, buyPrice, countOf, demandApplies, maxBuy, maxSell, nextSellPrice, offer, sellBlock, sellUnits, type TradeBlock } from '../game/run';
 import { drawBag, drawPortrait } from './common';
 
 const REASON: Record<Exclude<TradeBlock, null>, string> = {
@@ -94,10 +94,9 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string, max =
   const wasMet = run.quota.met;
   const cash = run.cash;
   if (selling) {
-    const bought = buyUnits(app.data, run, actorId, good, max ? maxBuy(run, actorId, good) : 1);
+    buy(app.data, run, actorId, good, max ? maxBuy(run, actorId, good) : 1);
     app.sfx.play('buy');
     ui.floater(`-$${cash - run.cash}`, mx, my - 12, C.redLight);
-    if (bought.free) ui.floater(`+${bought.free} free!`, mx, my - 26, C.cyan);
   } else {
     const sale = sellUnits(app.data, run, actorId, good, max ? maxSell(run, actorId, good) : 1);
     app.sfx.play('sell');
