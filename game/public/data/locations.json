@@ -13,7 +13,8 @@
     "blurb": "Cobblestones, glowing lamps, and a record shop that never opens.",
     "background": "assets/bg/lamplight_lane.png", "mapPos": { "x": 250, "y": 340 },
     "actorSlots": 3, "dealerSlot": { "x": 516, "y": 304 },
-    "slots": [ { "x": 60, "y": 160 }, { "x": 268, "y": 206 }, { "x": 476, "y": 166 } ] },
+    "slots": [ { "x": 60, "y": 160 }, { "x": 268, "y": 206 }, { "x": 476, "y": 166 } ] }
+,
   { "id": "frostpine_lodge", "name": "Frostpine Lodge", "area": "peaks",
     "blurb": "A crackling fireplace, wool socks drying, and cocoa on the stove.",
     "background": "assets/bg/frostpine_lodge.png", "mapPos": { "x": 170, "y": 160 },
@@ -28,5 +29,23 @@
     "blurb": "Lanterns, snowmen, and a market that stays open through blizzards.",
     "background": "assets/bg/hearthstone_square.png", "mapPos": { "x": 300, "y": 340 },
     "actorSlots": 3, "dealerSlot": { "x": 516, "y": 304 },
-    "slots": [ { "x": 60, "y": 164 }, { "x": 268, "y": 204 }, { "x": 476, "y": 168 } ] }
+    "slots": [ { "x": 60, "y": 164 }, { "x": 268, "y": 204 }, { "x": 476, "y": 168 } ] },
+  { "id": "midnight_station", "name": "Midnight Station", "area": "crossing",
+    "blurb": "The last train is always about to leave, and nobody is in a hurry to catch it.",
+    "background": "assets/bg/midnight_station.png", "mapPos": { "x": 150, "y": 170 },
+    "stars": "assets/bg/midnight_station_stars.json",
+    "actorSlots": 3, "dealerSlot": { "x": 516, "y": 304 },
+    "slots": [ { "x": 70, "y": 166 }, { "x": 270, "y": 212 }, { "x": 466, "y": 160 } ] },
+  { "id": "emberglow_alley", "name": "Emberglow Alley", "area": "crossing",
+    "blurb": "Red lanterns, grill smoke, and eight-seat counters, all squeezed into one lane.",
+    "background": "assets/bg/emberglow_alley.png", "mapPos": { "x": 300, "y": 350 },
+    "stars": "assets/bg/emberglow_alley_stars.json",
+    "actorSlots": 3, "dealerSlot": { "x": 516, "y": 304 },
+    "slots": [ { "x": 60, "y": 164 }, { "x": 268, "y": 204 }, { "x": 476, "y": 168 } ] },
+  { "id": "stargazers_lookout", "name": "Stargazer's Lookout", "area": "crossing",
+    "blurb": "A rooftop garden high above the city, where the lights below outshine the stars.",
+    "background": "assets/bg/stargazers_lookout.png", "mapPos": { "x": 480, "y": 190 },
+    "stars": "assets/bg/stargazers_lookout_stars.json", "fireflies": { "x": 0, "y": 230, "w": 640, "h": 160 },
+    "actorSlots": 3, "dealerSlot": { "x": 516, "y": 310 },
+    "slots": [ { "x": 64, "y": 190 }, { "x": 268, "y": 150 }, { "x": 472, "y": 196 } ] }
 ]

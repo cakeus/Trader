@@ -8,13 +8,11 @@ export const CONFIG = {
   limitDemand: false,
   /** Clicking an actor trades directly (shift = max) instead of opening the trade dialog. */
   quickTrade: true,
-  /** Chance of each deal tier being rolled for a seller's good on a given day (sums to 1). */
-  dealWeights: { good: 0.5, great: 0.3, amazing: 0.2 } as Partial<Record<Tier, number>>,
-  /** The same for a buyer's good. A bad buyer pays $1 under the good's great seller price
+  /** Chance of each deal tier being rolled for a seller's or buyer's good on a given day (sums to 1).
+   *  Buyers never roll bad: once a week, every buyer of one good from the bag is bad instead
+   *  (`rollBadDay` in run.ts). A bad buyer pays $1 under the good's great seller price
    *  (strawberry: the great seller price), so selling to one loses unless you bought at amazing. */
-  buyerDealWeights: { bad: 0.2, good: 0.4, great: 0.25, amazing: 0.15 } as Record<Tier, number>,
-  /** Buyer weights during the first quota (days 1–7): half the bad buyers, the rest turned good. */
-  firstQuotaBuyerDealWeights: { bad: 0.1, good: 0.5, great: 0.25, amazing: 0.15 } as Record<Tier, number>,
+  dealWeights: { good: 0.5, great: 0.3, amazing: 0.2 } as Partial<Record<Tier, number>>,
   /** Deal tiers are dealt from a shuffled deck per role (seller / buyer) instead of rolled
    *  independently, so each cycle of `deckSize` cards follows the tier weights closely. Only the
    *  location you visit uses up cards, so every card dealt is one you see. Each quota starts a
@@ -42,7 +40,7 @@ export const CONFIG = {
      *  bought once per run. */
     cost: {
       bag: 3, discount: 3, luck: 3, stock: 3, buyerStock: 3,
-      discountAll: 6, stockAll: 6, buyerStockAll: 6, luckAll: 8, tip: 5,
+      discountAll: 6, stockAll: 6, buyerStockAll: 6, luckAll: 6, tip: 6,
       dailyDiscount: 8, cantGetEnough: 8, collector: 8,
       birdsEye: 8, haggler: 8, fannyPack: 8, packedHouse: 8, cramazing: 8, mixedBag: 8, lastCall: 8,
       bigTipper: 8, fuzzyDice: 8, sleepingBag: 8, campFire: 8, monocle: 8, detour: 8, vintage: 8,
@@ -69,7 +67,7 @@ export const CONFIG = {
     /** How many ranks the ranked deals have; only the next rank is ever offered. */
     ranks: { bag: 4, stockAll: 1, buyerStockAll: 3, luckAll: 3 } as Record<RankedKind, number>,
     /** A luck deal adds this to the great and amazing weights of every seller and buyer of its good
-     *  (taking both from bad, then good). */
+     *  (taking both from good). */
     luckStep: 0.05,
     /** A stock deal adds this (by category) to the daily stock of every seller of its good. */
     stockStep: { food: 3, treasure: 2, music: 2, tools: 1 } as Record<string, number>,

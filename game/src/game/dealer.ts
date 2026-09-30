@@ -1,7 +1,7 @@
 import { rngFor } from '../engine/rng';
 import { areaView, goodOf } from './area';
 import { CONFIG } from './config';
-import { dealPrice, offerKey, sellerPrice, stockMultiplier } from './economy';
+import { bustlePrice, dealPrice, offerKey, offerPrice, stockMultiplier } from './economy';
 import { type ActorGood, type CategoryKind, type DealerDeal, type DealerOffer, type DealerVisit, type GameData, type RankedKind, RARITIES, type Rarity, type Role, type RunState, type SingleKind } from './types';
 
 export const BAG_TIERS = CONFIG.dealer.ranks.bag;
@@ -173,7 +173,9 @@ export function rollDealer(data: GameData, state: RunState): DealerVisit | null 
   if (state.dealerSeen && roll >= CONFIG.dealer.chance) return null;
   if (eligibleDeals(data, state).length === 0) return null;
   state.dealerSeen = true;
-  const locationId = state.locations[r.int(0, state.locations.length - 1)].id;
+  // never at the bustling location (Fireworks Night)
+  const spots = state.locations.filter((l) => l.id !== state.bustlingAt);
+  const locationId = spots[r.int(0, spots.length - 1)].id;
   const offers: DealerOffer[] = [];
   const cheap = state.dealerCheapOwed;
   state.dealerCheapOwed = false;
@@ -268,7 +270,7 @@ export function grantDeal(data: GameData, state: RunState, deal: DealerDeal): vo
       for (const g of deal.kind === 'discount' ? [good()] : allGoods)
         forTodays(data, state, 'supplier', g, (actorId, prices) => {
           const offer = state.market[offerKey(actorId, g)];
-          offer.price = sellerPrice(data, state, g, dealPrice(state, prices, offer.tier));
+          offer.price = offerPrice(data, state, g, 'supplier', prices, offer.tier, offer.bustling);
         });
       break;
     }
@@ -320,11 +322,12 @@ export function grantDeal(data: GameData, state: RunState, deal: DealerDeal): vo
       for (const g of allGoods) {
         forTodays(data, state, 'supplier', g, (actorId, prices) => {
           const offer = state.market[offerKey(actorId, g)];
-          if (offer.tier === 'amazing') offer.price = sellerPrice(data, state, g, dealPrice(state, prices, 'amazing'));
+          if (offer.tier === 'amazing') offer.price = offerPrice(data, state, g, 'supplier', prices, 'amazing', offer.bustling);
         });
         forTodays(data, state, 'buyer', g, (actorId, prices) => {
           const offer = state.market[offerKey(actorId, g)];
-          if (offer.tier === 'amazing') offer.price += dealPrice(state, prices, 'amazing') - prices.amazing;
+          const bustle = (p: number) => (offer.bustling ? bustlePrice(data, state, 'buyer', p) : p);
+          if (offer.tier === 'amazing') offer.price += bustle(dealPrice(state, prices, 'amazing')) - bustle(prices.amazing);
         });
       }
       break;

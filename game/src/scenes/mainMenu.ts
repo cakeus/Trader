@@ -5,7 +5,7 @@ import { C, type Ui } from '../engine/ui';
 import { newRun } from '../game/run';
 import { loadRun } from '../game/save';
 import { areasInOrder } from '../game/area';
-import { Confirm, drawBackground, drawSnow } from './common';
+import { Confirm, drawBackground, drawWeather } from './common';
 import { LocationScene } from './location';
 import { MapScene } from './map';
 
@@ -43,7 +43,7 @@ export class MainMenu implements Scene {
     const { data } = this.app;
     const area = (this.app.titleArea && data.areas[this.app.titleArea]) || areasInOrder(data)[0];
     drawBackground(ui, area.map);
-    if (area.weather === 'snow') drawSnow(ui);
+    drawWeather(ui, area.weather, area);
     ui.dim(0.5);
 
     // goods bobbing around the title, nudged aside by the cursor

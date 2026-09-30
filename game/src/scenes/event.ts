@@ -3,6 +3,18 @@ import { H, W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
 import type { AreaEvent } from '../game/types';
 
+/** An event's rule in one line, for its notice. */
+function eventRule(event: AreaEvent): string | null {
+  if (event.buyerLimit !== undefined) return `Buyers take at most ${event.buyerLimit} of a good per day.`;
+  const b = event.bustling;
+  if (b) {
+    const pct = (f: number) => `${Math.round(f * 100)}%`;
+    return `Bustling: +${b.extraActors} trader, buyers +${pct(b.buyBonus)}, sellers -${pct(b.sellDiscount)}.`;
+  }
+  if (event.snowedIn) return 'One spot a day is snowed in and hidden on the map.';
+  return null;
+}
+
 /** Shown the first morning an area event is on (after its weather has been seen for a moment):
  *  what's happening, and the rule it brings. */
 export class EventNotice implements Scene {
@@ -15,7 +27,7 @@ export class EventNotice implements Scene {
     ui.dim(0.45);
     const w = 340;
     const blurb = ui.font.wrap(event.blurb, w - 40);
-    const rule = event.buyerLimit === undefined ? null : `Buyers take at most ${event.buyerLimit} of a good per day.`;
+    const rule = eventRule(event);
     const h = 108 + blurb.length * ui.font.lineHeight + (rule ? 30 : 0);
     const r = { x: (W - w) / 2, y: (H - h) / 2, w, h };
     ui.nine('panel', r);

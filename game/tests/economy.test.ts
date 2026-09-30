@@ -7,11 +7,13 @@ import {
   allDeals, BAG_TIERS, buyDealerDeal, dealCost, dealEnabled, dealerBlock, dealerOfferCount, dealFromKey, dealKey, eligibleDeals, grantDeal,
   isRanked, isUniversal, rarityFallback, rarityOdds, rarityOf, rollDealer, rollRarity,
 } from '../src/game/dealer';
-import { dealPrice, deckCard, deckCards, extraDemand, rollMarket, rollStock, rollTier, tierAt, tierPrice, tierWeights } from '../src/game/economy';
+import {
+  bustlePrice, dealPrice, deckCard, deckCards, extraDemand, offerPrice, rollMarket, rollStock, rollTier, tierAt, tierPrice, tierWeights,
+} from '../src/game/economy';
 import {
   avgPaid, BASE_STARS, buy, buyBlock, buyPrice, buyoutOffer, buyoutPrice, buyUnits, canAct, canDetour, CAPACITY, detour, endDay,
   endOfDayPayouts, FIRST_QUOTA, guaranteedGood, hagglerMultiplier, maxBuy, maxSell, newRun, nextSellPrice, offer, quotaFor, rescueGood,
-  sell, sellBlock, sellPrice, sellUnits, START_CASH, takeBuyout, updateQuota, visit,
+  rollBadDay, sell, sellBlock, sellPrice, sellUnits, START_CASH, takeBuyout, updateQuota, visit,
 } from '../src/game/run';
 import { type DealerDeal, type RunState, type SingleKind, TIERS } from '../src/game/types';
 import { areaView, goodOf } from '../src/game/area';
@@ -21,13 +23,10 @@ import { loadTestData } from './helpers';
 const full = loadTestData();
 /** Most tests play in the first area. */
 const data = areaView(full, 'bay');
-const DEFAULT_CONFIG = { ...CONFIG, dealWeights: { ...CONFIG.dealWeights }, buyerDealWeights: { ...CONFIG.buyerDealWeights } };
+const DEFAULT_CONFIG = { ...CONFIG, dealWeights: { ...CONFIG.dealWeights } };
 const DEFAULT_RARITY_ODDS = structuredClone(CONFIG.dealer.rarityOdds);
 afterEach(() => {
-  Object.assign(CONFIG, DEFAULT_CONFIG, {
-    dealWeights: { ...DEFAULT_CONFIG.dealWeights },
-    buyerDealWeights: { ...DEFAULT_CONFIG.buyerDealWeights },
-  });
+  Object.assign(CONFIG, DEFAULT_CONFIG, { dealWeights: { ...DEFAULT_CONFIG.dealWeights } });
   CONFIG.dealer.rarityOdds = structuredClone(DEFAULT_RARITY_ODDS);
 });
 
@@ -52,7 +51,7 @@ function withActor(s: RunState, role: 'supplier' | 'buyer', good: string): strin
 
 describe('data', () => {
   it('has, per area, 4 goods with 2 sellers and 2 buyers each, and 3 locations of 3 slots', () => {
-    expect(Object.keys(full.areas)).toEqual(['bay', 'peaks']);
+    expect(Object.keys(full.areas)).toEqual(['bay', 'peaks', 'crossing']);
     for (const area of Object.keys(full.areas)) {
       const v = areaView(full, area);
       expect(Object.keys(v.goods)).toHaveLength(4);
@@ -69,7 +68,10 @@ describe('data', () => {
     }
   });
 
-  it("prices each mountain good at twice its category's bay good", () => {
+  it.each([
+    ['peaks', 2],
+    ['crossing', 4],
+  ])("prices each %s good at %ix its category's bay good", (area, factor) => {
     for (const c of Object.keys(full.categories))
       for (const role of ['supplier', 'buyer']) {
         const prices = (area: string) => {
@@ -80,19 +82,17 @@ describe('data', () => {
             .map((p) => JSON.stringify(p))
             .sort();
         };
-        const doubled = prices('bay')
-          .map((p) => JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(p)).map(([t, v]) => [t, 2 * (v as number)]))))
+        const scaled = prices('bay')
+          .map((p) => JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(p)).map(([t, v]) => [t, factor * (v as number)]))))
           .sort();
-        expect(prices('peaks')).toEqual(doubled);
+        expect(prices(area)).toEqual(scaled);
       }
   });
 
   it('gives each area its own cast of 16 actors', () => {
-    const bay = Object.keys(areaView(full, 'bay').actors);
-    const peaks = Object.keys(areaView(full, 'peaks').actors);
-    expect(bay).toHaveLength(16);
-    expect(peaks).toHaveLength(16);
-    expect(bay.filter((id) => peaks.includes(id))).toEqual([]);
+    const casts = Object.keys(full.areas).map((area) => Object.keys(areaView(full, area).actors));
+    for (const cast of casts) expect(cast).toHaveLength(16);
+    expect(new Set(casts.flat()).size).toBe(16 * casts.length);
     for (const a of Object.values(full.actors)) expect(a.goods).toHaveLength(1);
   });
 
@@ -326,12 +326,13 @@ describe('deal tiers', () => {
     for (const t of TIERS) expect(counts[t] / n).toBeCloseTo(CONFIG.dealWeights[t] ?? 0, 1);
   });
 
-  it('roll buyers roughly in proportion to CONFIG.buyerDealWeights', () => {
-    const r = rngFor(3, 'tier-test');
-    const counts = { bad: 0, good: 0, great: 0, amazing: 0 };
-    const n = 20000;
-    for (let i = 0; i < n; i++) counts[rollTier(r, CONFIG.buyerDealWeights)]++;
-    for (const t of TIERS) expect(counts[t] / n).toBeCloseTo(CONFIG.buyerDealWeights[t], 1);
+  it('give buyers the same weights as sellers, with no bad tier, in every quota', () => {
+    const s = newRun(data, 1);
+    for (const q of [0, 1, 4]) {
+      s.quota = quotaFor(q);
+      expect(tierWeights(data, s, 'hammer', 'buyer')).toEqual(CONFIG.dealWeights);
+      expect(tierWeights(data, s, 'hammer', 'supplier')).toEqual(CONFIG.dealWeights);
+    }
   });
 
   it('never roll a bad deal for a seller, and price a bad buyer at or below the great seller price', () => {
@@ -345,7 +346,6 @@ describe('deal tiers', () => {
 
   it('respect a changed weighting', () => {
     CONFIG.dealWeights = { bad: 0, good: 0, great: 0, amazing: 1 };
-    CONFIG.buyerDealWeights = { bad: 0, good: 0, great: 0, amazing: 1 };
     const r = rngFor(2, 'tier-test');
     for (let i = 0; i < 100; i++) expect(rollTier(r)).toBe('amazing');
   });
@@ -1091,19 +1091,14 @@ describe('dealer', () => {
 
   it("luck shifts that good's seller and buyer tiers towards great/amazing, not other goods", () => {
     const s = withDealer(4, [{ kind: 'luck', category: 'treasure' }]);
-    s.quota = quotaFor(1); // past the first quota's gentler buyers
     buyDealerDeal(data, s, 0);
     const step = CONFIG.dealer.luckStep;
-    const buyer = CONFIG.buyerDealWeights;
     const seller = CONFIG.dealWeights;
-    // buyers: bad pays for both
+    const buyer = seller;
+    // good pays for both, the same on both sides
     const w = tierWeights(data, s, 'seashell', 'buyer');
-    expect(w.bad).toBeCloseTo(buyer.bad - 2 * step);
-    expect(w.good).toBeCloseTo(buyer.good);
-    expect(w.great).toBeCloseTo(buyer.great + step);
-    expect(w.amazing).toBeCloseTo(buyer.amazing + step);
-    // sellers have no bad, so good pays
     const sw = tierWeights(data, s, 'seashell', 'supplier');
+    expect(w).toEqual(sw);
     expect(sw.bad).toBeUndefined();
     expect(sw.good).toBeCloseTo(seller.good! - 2 * step);
     expect(sw.great).toBeCloseTo(seller.great! + step);
@@ -1112,7 +1107,7 @@ describe('dealer', () => {
     expect(tierWeights(data, s, 'hammer', 'supplier')).toEqual(seller);
     expect(eligibleDeals(data, s)).not.toContainEqual({ kind: 'luck', category: 'treasure' });
     expect(eligibleDeals(data, s)).toContainEqual({ kind: 'luck', category: 'tools' });
-    const counts = { shellBuyer: { bad: 0, n: 0 }, otherBuyer: { bad: 0, n: 0 }, shellSeller: { good: 0, n: 0 }, otherSeller: { good: 0, n: 0 } };
+    const counts = { shellBuyer: { good: 0, n: 0 }, otherBuyer: { good: 0, n: 0 }, shellSeller: { good: 0, n: 0 }, otherSeller: { good: 0, n: 0 } };
     for (let d = 0; d < 400; d++) {
       s.quota.dueDay = 9999; // keep the run alive
       visit(data, s, s.locations[0].id); // use up the tier deck cards, as a player would
@@ -1130,45 +1125,32 @@ describe('dealer', () => {
             } else {
               const c = shell ? counts.shellBuyer : counts.otherBuyer;
               c.n++;
-              c.bad += +(tier === 'bad');
+              c.good += +(tier === 'good');
             }
           }
     }
-    expect(counts.shellBuyer.bad / counts.shellBuyer.n).toBeCloseTo(w.bad!, 1);
-    expect(counts.otherBuyer.bad / counts.otherBuyer.n).toBeCloseTo(buyer.bad, 1);
+    // the bag stays empty, so there's no weekly bad day
+    expect(counts.shellBuyer.good / counts.shellBuyer.n).toBeCloseTo(w.good!, 1);
+    expect(counts.otherBuyer.good / counts.otherBuyer.n).toBeCloseTo(buyer.good!, 1);
     expect(counts.shellSeller.good / counts.shellSeller.n).toBeCloseTo(sw.good!, 1);
     expect(counts.otherSeller.good / counts.otherSeller.n).toBeCloseTo(seller.good!, 1);
   });
 
-  it('keeps bad buyers until the second rank of all-goods luck', () => {
-    const s = newRun(data, 1);
-    s.quota = quotaFor(1);
-    s.perks.luckAll = CONFIG.dealer.luckAll;
-    expect(tierWeights(data, s, 'hammer', 'buyer').bad).toBeGreaterThan(0);
-    s.perks.luckAll = 2 * CONFIG.dealer.luckAll;
-    expect(tierWeights(data, s, 'hammer', 'buyer').bad).toBeCloseTo(0);
-  });
-
   it('all-goods luck is at least as strong, hits every good, and stacks with the per-good one', () => {
     const s = withDealer(5, [{ kind: 'luck', category: 'tools' }, { kind: 'luckAll', tier: 1 }], 20);
-    s.quota = quotaFor(1);
     s.dealer!.offers.forEach((_, i) => expect(buyDealerDeal(data, s, i)).toBe(true));
     const { luckStep: step, luckAll: all } = CONFIG.dealer;
     expect(all).toBeGreaterThanOrEqual(step);
-    const base = CONFIG.buyerDealWeights;
-    // bad pays first, then good
-    const after = (s: number) => {
-      const bad = Math.max(0, base.bad - 2 * s);
-      return { bad, good: base.good - (2 * s - (base.bad - bad)) };
-    };
+    const base = CONFIG.dealWeights as Record<'good' | 'great' | 'amazing', number>;
+    // good pays for both
+    const after = (s: number) => ({ good: base.good - 2 * s });
     const bw = (good: string) => tierWeights(data, s, good, 'buyer');
     expect(bw('hammer').great).toBeCloseTo(base.great + step + all);
-    expect(bw('hammer').bad).toBeCloseTo(after(step + all).bad);
+    expect(bw('hammer').bad).toBeUndefined();
     expect(bw('hammer').good).toBeCloseTo(after(step + all).good);
     expect(tierWeights(data, s, 'hammer', 'supplier').good).toBeCloseTo(CONFIG.dealWeights.good! - 2 * (step + all));
     for (const good of ['strawberry', 'seashell', 'old_record']) {
       expect(bw(good).amazing).toBeCloseTo(base.amazing + all);
-      expect(bw(good).bad).toBeCloseTo(after(all).bad);
       expect(bw(good).good).toBeCloseTo(after(all).good);
       expect(tierWeights(data, s, good, 'supplier').amazing).toBeCloseTo(CONFIG.dealWeights.amazing! + all);
     }
@@ -1252,23 +1234,19 @@ describe('tier deck', () => {
     expect(CONFIG.deckSize).toBe(10);
     for (let seed = 1; seed <= 30; seed++) {
       for (const [q, c] of [[0, 0], [0, 1], [3, 2]]) {
-        const w1 = cycle(seed, 'buyer', q, c, CONFIG.firstQuotaBuyerDealWeights); // 1 / 5 / 2.5 / 1.5
-        expect(w1.bad).toBe(1);
-        expect(w1.good).toBe(5);
-        expect([2, 3]).toContain(w1.great);
-        expect(w1.great + w1.amazing).toBe(4);
-        const later = cycle(seed, 'buyer', q, c, CONFIG.buyerDealWeights); // 2 / 4 / 2.5 / 1.5
-        expect(later.bad).toBe(2);
-        expect(later.good).toBe(4);
-        expect(later.great + later.amazing).toBe(4);
+        expect(cycle(seed, 'buyer', q, c, CONFIG.dealWeights)).toEqual({ bad: 0, good: 5, great: 3, amazing: 2 });
         expect(cycle(seed, 'supplier', q, c, CONFIG.dealWeights)).toEqual({ bad: 0, good: 5, great: 3, amazing: 2 });
+        const split = cycle(seed, 'buyer', q, c, { good: 0.5, great: 0.25, amazing: 0.25 }); // 5 / 2.5 / 2.5
+        expect(split.good).toBe(5);
+        expect([2, 3]).toContain(split.great);
+        expect(split.great + split.amazing).toBe(5);
       }
     }
   });
 
   it('is right on average for weights that split a card', () => {
     let great = 0;
-    for (let seed = 1; seed <= 400; seed++) great += cycle(seed, 'buyer', 0, 0, CONFIG.buyerDealWeights).great;
+    for (let seed = 1; seed <= 400; seed++) great += cycle(seed, 'buyer', 0, 0, { good: 0.5, great: 0.25, amazing: 0.25 }).great;
     expect(great / 400).toBeCloseTo(2.5, 0);
   });
 
@@ -1277,14 +1255,6 @@ describe('tier deck', () => {
     expect(order(0, 0)).not.toEqual(order(0, 1));
     expect(order(0, 0)).not.toEqual(order(1, 0));
     expect(order(0, 0)).toEqual(order(0, 0));
-  });
-
-  it('gives the first quota half the bad buyers, then the normal weights', () => {
-    const s = newRun(data, 1);
-    expect(tierWeights(data, s, 'hammer', 'buyer')).toEqual(CONFIG.firstQuotaBuyerDealWeights);
-    expect(tierWeights(data, s, 'hammer', 'supplier')).toEqual(CONFIG.dealWeights);
-    s.quota = quotaFor(1);
-    expect(tierWeights(data, s, 'hammer', 'buyer')).toEqual(CONFIG.buyerDealWeights);
   });
 
   it('only the visited location uses up cards, and it gets the next ones in order', () => {
@@ -1376,6 +1346,30 @@ describe('areas', () => {
     expect(s.moved).toEqual({ area: 'peaks', units: 2, refund: 11 });
   });
 
+  it('moves on from the peaks to Lantern Crossing on day 43, buying the bag back', () => {
+    const s = playTo(4, 42);
+    expect(s.area).toBe('peaks');
+    s.cash = s.quota.amount;
+    s.inventory = [{ good: 'pickaxe', paid: 18, day: 42 }];
+    const cash = s.cash;
+    expect(endDay(full, s)).toBe('quotaPassed');
+    expect(s.day).toBe(43);
+    expect(s.area).toBe('crossing');
+    expect(s.cash).toBe(cash + 18);
+    expect(s.moved).toEqual({ area: 'crossing', units: 1, refund: 18 });
+    expect(s.locations.map((l) => full.locations[l.id].area)).toEqual(['crossing', 'crossing', 'crossing']);
+    for (const key of Object.keys(s.market)) expect(full.goods[key.split(':')[1]].area).toBe('crossing');
+    expect(weatherOn(full, 'crossing', 43)).toBe('lanterns');
+  });
+
+  it('does not move to Lantern Crossing when the day-42 quota is missed', () => {
+    const s = playTo(4, 42);
+    s.cash = 0;
+    s.quota.met = false;
+    expect(endDay(full, s)).toBe('failed');
+    expect(s.area).toBe('peaks');
+  });
+
   it('does not move when the day-21 quota is missed', () => {
     const s = playTo(5, 21);
     s.cash = 0;
@@ -1413,6 +1407,178 @@ describe('areas', () => {
     expect(cats.map((d) => dealKey(d)).sort()).toEqual(['stock:food', 'stock:music', 'stock:tools', 'stock:treasure']);
     const s = playTo(2, 22);
     expect(eligibleDeals(full, s).some((d) => dealKey(d) === 'stock:food')).toBe(true);
+  });
+});
+
+describe('Fireworks Night (Lantern Crossing, day 57 on)', () => {
+  const fireworks = full.areas.crossing.events!.find((e) => e.id === 'fireworks')!;
+  const bust = fireworks.bustling!;
+  const crossing = areaView(full, 'crossing');
+
+  /** A run in Lantern Crossing, dealt for `day` (no quota due). */
+  function crossingDay(seed: number, day: number, d = full, setup?: (s: RunState) => void): RunState {
+    const s = newRun(d, seed);
+    s.area = 'crossing';
+    s.locations = Object.keys(crossing.locations).map((id) => ({ id, actorIds: [] as string[] }));
+    s.quota = { ...quotaFor(Math.floor((day - 1) / 7)), dueDay: 9999 };
+    s.day = day - 1;
+    setup?.(s);
+    endDay(d, s);
+    return s;
+  }
+  const withStars = (s: RunState) => {
+    s.stats.starsEarned = 5;
+    s.dealerSeen = true;
+  };
+
+  it('starts on day 57 and lasts to the end of the area, with fireworks over the lantern weather', () => {
+    expect(fireworks.fromDay).toBe(57);
+    expect(eventOn(full, 'crossing', 56)).toBeNull();
+    expect(eventOn(full, 'crossing', 57)?.id).toBe('fireworks');
+    expect(eventOn(full, 'crossing', 63)?.id).toBe('fireworks');
+    expect(weatherOn(full, 'crossing', 56)).toBe('lanterns');
+    expect(weatherOn(full, 'crossing', 57)).toBe('fireworks');
+  });
+
+  it('makes exactly one location bustling each day, with 4 actors and no good twice', () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 30; seed++) {
+      const s = crossingDay(seed, 57 + (seed % 7), full, withStars);
+      expect(s.bustlingAt).toBeTruthy();
+      seen.add(s.bustlingAt!);
+      const loc = s.locations.find((l) => l.id === s.bustlingAt)!;
+      expect(loc.actorIds).toHaveLength(crossing.locations[loc.id].actorSlots + bust.extraActors);
+      const goods = loc.actorIds.map((id) => full.actors[id].goods[0].good);
+      expect(new Set(goods).size).toBe(goods.length);
+      for (const id of loc.actorIds) expect(s.market[`${id}:${full.actors[id].goods[0].good}`].bustling).toBe(true);
+      for (const l of s.locations.filter((x) => x.id !== s.bustlingAt))
+        for (const id of l.actorIds) expect(s.market[`${id}:${full.actors[id].goods[0].good}`].bustling).toBeUndefined();
+    }
+    expect(seen.size).toBe(3);
+  });
+
+  it('buyers pay 25% more and sellers charge 25% less there, rounded (sellers at least $1)', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const s = crossingDay(seed, 60);
+      for (const id of s.locations.find((l) => l.id === s.bustlingAt)!.actorIds) {
+        const a = full.actors[id];
+        const ag = a.goods[0];
+        const o = offer(s, id, ag.good);
+        const base = offerPrice(full, s, ag.good, a.role, ag.prices, o.tier, false);
+        const want = a.role === 'buyer' ? Math.round(base * (1 + bust.buyBonus)) : Math.max(1, Math.round(base * (1 - bust.sellDiscount)));
+        expect(o.price).toBe(want);
+      }
+    }
+    // rounding: $1 stays $1 for sellers, and halves round up
+    const s = crossingDay(1, 60);
+    expect(bustlePrice(full, s, 'supplier', 1)).toBe(1);
+    expect(bustlePrice(full, s, 'supplier', 2)).toBe(2);
+    expect(bustlePrice(full, s, 'supplier', 12)).toBe(9);
+    expect(bustlePrice(full, s, 'buyer', 10)).toBe(13);
+    expect(bustlePrice(full, s, 'buyer', 52)).toBe(65);
+  });
+
+  it('never puts the Dealer at the bustling location, and his visits are as likely as without the event', () => {
+    const calm = buildData(
+      Object.values(full.goods), Object.values(full.actors), Object.values(full.locations), full.dealer, Object.values(full.categories),
+      Object.values(full.areas).map((a) => (a.id === 'crossing' ? { ...a, events: [] } : a)),
+    );
+    let visits = 0;
+    for (let seed = 0; seed < 60; seed++) {
+      const s = crossingDay(seed, 58, full, withStars);
+      const c = crossingDay(seed, 58, calm, withStars);
+      expect(c.bustlingAt).toBeNull();
+      expect(!!s.dealer).toBe(!!c.dealer);
+      if (!s.dealer) continue;
+      visits++;
+      expect(s.dealer.locationId).not.toBe(s.bustlingAt);
+      const loc = s.locations.find((l) => l.id === s.dealer!.locationId)!;
+      expect(loc.actorIds).toHaveLength(crossing.locations[loc.id].actorSlots - 1);
+    }
+    expect(visits).toBeGreaterThan(10);
+  });
+
+  it('puts Packed House somewhere else, so both still happen', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const s = crossingDay(seed, 59, full, (x) => grantDeal(full, x, { kind: 'packedHouse' }));
+      expect(s.packedAt).toBeTruthy();
+      expect(s.packedAt).not.toBe(s.bustlingAt);
+      const packed = s.locations.find((l) => l.id === s.packedAt)!;
+      const slots = crossing.locations[packed.id].actorSlots + 1 - (s.dealer?.locationId === packed.id ? 1 : 0);
+      expect(packed.actorIds).toHaveLength(slots);
+      expect(s.locations.find((l) => l.id === s.bustlingAt)!.actorIds).toHaveLength(4);
+    }
+  });
+
+  it('keeps the due-day guarantee', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const s = crossingDay(seed, 63, full, (x) => {
+        x.inventory = [{ good: 'paper_lantern', paid: 30, day: 62 }];
+        x.quota.dueDay = 63;
+        x.quota.met = true;
+      });
+      const buyers = s.locations.flatMap((l) => l.actorIds).filter((id) => full.actors[id].role === 'buyer');
+      expect(buyers.some((id) => full.actors[id].goods[0].good === 'paper_lantern')).toBe(true);
+    }
+  });
+
+  it('changes nothing before day 57', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const s = crossingDay(seed, 56, full, withStars);
+      expect(s.bustlingAt).toBeNull();
+      for (const o of Object.values(s.market)) expect(o.bustling).toBeUndefined();
+      for (const l of s.locations)
+        expect(l.actorIds).toHaveLength(crossing.locations[l.id].actorSlots - (s.dealer?.locationId === l.id ? 1 : 0));
+    }
+  });
+});
+
+describe('Blizzard (Frostpine Peaks, day 36 on)', () => {
+  const peaks = areaView(full, 'peaks');
+  const calm = buildData(
+    Object.values(full.goods), Object.values(full.actors), Object.values(full.locations), full.dealer, Object.values(full.categories),
+    Object.values(full.areas).map((a) => (a.id === 'peaks' ? { ...a, events: [] } : a)),
+  );
+
+  /** A run in Frostpine Peaks, dealt for `day` (no quota due). */
+  function peaksDay(seed: number, day: number, d = full): RunState {
+    const s = newRun(d, seed);
+    s.area = 'peaks';
+    s.locations = Object.keys(peaks.locations).map((id) => ({ id, actorIds: [] as string[] }));
+    s.quota = { ...quotaFor(Math.floor((day - 1) / 7)), dueDay: 9999 };
+    s.day = day - 1;
+    s.stats.starsEarned = 5;
+    s.dealerSeen = true;
+    endDay(d, s);
+    return s;
+  }
+
+  it('runs from day 36 to the end of the area, with blizzard weather', () => {
+    expect(eventOn(full, 'peaks', 35)).toBeNull();
+    expect(eventOn(full, 'peaks', 36)?.id).toBe('blizzard');
+    expect(eventOn(full, 'peaks', 42)?.id).toBe('blizzard');
+    expect(weatherOn(full, 'peaks', 35)).toBe('snow');
+    expect(weatherOn(full, 'peaks', 36)).toBe('blizzard');
+    expect(weatherOn(full, 'crossing', 43)).toBe('lanterns');
+  });
+
+  it('snows in one location a day (all of them over time) without changing the deal', () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 30; seed++) {
+      const s = peaksDay(seed, 37);
+      const c = peaksDay(seed, 37, calm);
+      expect(s.locations.map((l) => l.id)).toContain(s.snowedAt);
+      seen.add(s.snowedAt!);
+      expect(c.snowedAt).toBeNull();
+      expect(s.locations).toEqual(c.locations);
+      expect(s.market).toEqual(c.market);
+      expect(s.dealer).toEqual(c.dealer);
+    }
+    expect(seen.size).toBe(3);
+  });
+
+  it('snows nothing in before day 36', () => {
+    for (let seed = 0; seed < 10; seed++) expect(peaksDay(seed, 35).snowedAt).toBeNull();
   });
 });
 
@@ -1660,5 +1826,100 @@ describe('rare stamps', () => {
     visit(data, s, s.locations[0].id);
     s.boughtToday = true;
     expect(canDetour(s)).toBe(false);
+  });
+});
+
+describe('weekly bad day', () => {
+  const bag = (goods: string[], day: number) => goods.map((good) => ({ good, paid: 1, day }));
+  const planned = (seed: number, week: number) => rngFor(seed, 'badDay', week).int(7 * week + 1, 7 * week + 6);
+  /** Play days 1..last ending each day with `fill(day)` in the bag; returns each day's bad good. */
+  const play = (seed: number, last: number, fill: (day: number) => string[], before?: (s: RunState) => void) => {
+    const s = newRun(data, seed);
+    before?.(s);
+    const bad: Record<number, string | null> = { 1: s.badGood ?? null };
+    while (s.day < last) {
+      s.quota.dueDay = 9999; // keep the run alive
+      s.inventory = bag(fill(s.day + 1), s.day);
+      endDay(data, s);
+      bad[s.day] = s.badGood ?? null;
+      // every dealt buyer of the bad good is bad at its bad price, and nothing else is
+      for (const l of s.locations)
+        for (const id of l.actorIds)
+          for (const ag of areaView(full, s.area).actors[id].goods) {
+            const o = offer(s, id, ag.good);
+            const isBad = full.actors[id].role === 'buyer' && ag.good === s.badGood;
+            expect(o.tier === 'bad').toBe(isBad);
+            if (isBad) expect(o.price).toBe(ag.prices.bad);
+          }
+    }
+    return bad;
+  };
+
+  it('comes once a week on its pre-rolled day (or the first day with goods), never on the last', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const bad = play(seed, 14, () => ['hammer', 'seashell']);
+      for (const week of [0, 1]) {
+        const days = Object.keys(bad).map(Number).filter((d) => d > 7 * week && d <= 7 * week + 7 && bad[d]);
+        // day 1 always starts with an empty bag
+        expect(days).toEqual([Math.max(planned(seed, week), 2)]);
+        expect(['hammer', 'seashell']).toContain(bad[days[0]]);
+      }
+    }
+  });
+
+  it('ignores the luck stamps', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const bad = play(seed, 14, () => ['strawberry'], (s) => {
+        s.perks.luckAll = CONFIG.dealer.ranks.luckAll * CONFIG.dealer.luckAll;
+        for (const c of Object.keys(full.categories)) s.perks.luck[c] = CONFIG.dealer.luckStep;
+      });
+      expect(bad[Math.max(planned(seed, 1), 8)]).toBe('strawberry');
+    }
+  });
+
+  it('moves to the next day while the bag is empty, but not into the next week or its last day', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const from = 8 + (seed % 7); // the bag has goods from this morning on
+      const bad = play(seed, 14, (day) => (day >= from ? ['old_record'] : []));
+      const want = Math.max(planned(seed, 1), from);
+      const days = Object.keys(bad).map(Number).filter((d) => d >= 8 && bad[d]);
+      expect(days).toEqual(want <= 13 ? [want] : []);
+    }
+  });
+
+  it('never comes during an area event', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const bad = play(seed, 21, () => ['hammer']);
+      for (let d = 15; d <= 21; d++) expect(bad[d]).toBeNull();
+    }
+    const s = newRun(data, 3);
+    s.inventory = bag(['hammer'], 1);
+    for (const day of [15, 16, 20]) {
+      s.day = day;
+      delete s.badWeek;
+      expect(rollBadDay(data, s)).toBeNull();
+    }
+  });
+
+  it("doesn't use up tier deck cards", () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 40 && checked < 5; seed++) {
+      const s = newRun(data, seed);
+      while (s.day < 13 && !s.badGood) {
+        s.quota.dueDay = 9999;
+        s.inventory = bag(['hammer', 'seashell', 'strawberry', 'old_record'], s.day);
+        endDay(data, s);
+      }
+      if (!s.badGood) continue;
+      for (const l of s.locations) {
+        const buyers = l.actorIds
+          .filter((id) => data.actors[id].role === 'buyer')
+          .flatMap((id) => data.actors[id].goods)
+          .filter((g) => g.good !== s.badGood).length;
+        expect(deckCards(data, s, l.id).buyer).toBe(buyers);
+        if (buyers < l.actorIds.filter((id) => data.actors[id].role === 'buyer').length) checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

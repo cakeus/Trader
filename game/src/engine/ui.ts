@@ -27,6 +27,8 @@ export const C = {
   muted: '#b8a8c0',
   sky: '#8fd0e8',
   cyan: '#7fe8f0',
+  /** Festive lantern orange (Fireworks Night). */
+  festive: '#ffac5e',
 };
 
 export type PanelKind = 'panel' | 'panel_dark' | 'row' | 'row_hover' | 'btn' | 'btn_hover' | 'btn_down' | 'btn_disabled';

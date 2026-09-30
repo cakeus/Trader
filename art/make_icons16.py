@@ -177,8 +177,99 @@ def pickaxe(S):
     S.blob(head, steel, hexc("#27304a"), lx=0.65, ly=0.65, cuts=(-0.4, 0.15, 0.6))
 
 
-ORDER = ["strawberry", "seashell", "old_record", "hammer", "hot_cocoa", "crystal", "music_box", "pickaxe"]
-DRAWN = {"old_record": record, "pickaxe": pickaxe}
+def sushi_roll(S):
+    """A maki slice: nori wrap, white rice, tuna and cucumber center (as make_sushi_roll.py)."""
+    S.rows(["....OOOOOOOO....",
+            "..OONNNNNNNNOO..",
+            ".ONNWWWWWWWwNNO.",
+            "ONWWWooooCCwwwNO",
+            "ONWWoPTTToCcwsNO",
+            "ONWwoTTTtoCCwsNO",
+            "ONNwwoooowwssNNO",
+            "OLOONNNNNNNNOOnO",
+            "OLLNOOOOOOOONnnO",
+            "OLLNNNNNNNNNnnnO",
+            "OLLNNnNNNNNnnnnO",
+            ".OLNNNNNNNnnnnO.",
+            "..OONNNNNNnnOO..",
+            "....OOOOOOOO...."],
+           {"O": hexc("#0f1c1c"), "N": hexc("#2f4a40"), "n": hexc("#223830"), "L": hexc("#4c6a58"),
+            "W": hexc("#fffdf6"), "w": hexc("#f4eedf"), "s": hexc("#dcd2bf"), "o": hexc("#7a1e34"),
+            "P": hexc("#ff8e8a"), "T": hexc("#e8505a"), "t": hexc("#b83246"), "C": hexc("#5cae4c"),
+            "c": hexc("#a8e07a")})
+
+
+def lucky_cat(S):
+    """Gold maneki-neko waving both paws, red collar and bell (as make_lucky_cat.py)."""
+    S.rows(["...O......O.....",
+            "OO.OOO..OOO.OO..",
+            "OYOORLOOORROYO..",
+            "OyYOLYYYYYyOyYO.",
+            "OYyOWYYYYYYOYyO.",
+            ".OOWYFYYYFYyOO..",
+            "..OYYYYppYYyO...",
+            "..OYYYFYYFYdO...",
+            "..ORRRRRRRRrO...",
+            "..OYYYOGGOYdO...",
+            ".OYYYYOgdOYydO..",
+            ".OYYYYYOOYYddO..",
+            ".OYYYYYYyyyddO..",
+            "..OOOOOOOOOOO..."],
+           {"O": hexc("#6e4216"), "W": hexc("#fff2a8"), "Y": hexc("#ffd552"), "y": hexc("#e8a93a"),
+            "d": hexc("#b87426"), "L": hexc("#fff2a8"), "R": hexc("#e0503f"), "r": hexc("#a8332f"),
+            "F": hexc("#5a3212"), "p": hexc("#ff9a9a"), "G": hexc("#fff2a8"), "g": hexc("#e0a83a")})
+
+
+def taiko_drum(S):
+    """Barrel drum with a skin head, tacks, a brass ring and crossed sticks (as make_taiko_drum.py)."""
+    S.rows(["..OO......OO....",
+            "..OhO....OhO....",
+            "...OhO..OhO.....",
+            "..OOOhOOhOOOO...",
+            ".OWWWShhSSSssO..",
+            ".OKSSSSSSSssKO..",
+            ".OOOOOOOOOOOOO..",
+            "OLWtRtRtRtRtrdO.",
+            "OLWRRRRRRRRRrdO.",
+            "OLWRRRRBbRRRrdO.",
+            "OLWRRRRbBbRRrdO.",
+            "OLWRRRRRRRRRrdO.",
+            "OLWtRtRtRtRtrdO.",
+            ".OLRRRRRRRRrdO..",
+            "..OOOOOOOOOOO..."],
+           {"O": hexc("#3e1a14"), "h": hexc("#d0924e"), "W": hexc("#fff6dc"), "S": hexc("#f6e2b0"),
+            "s": hexc("#dcc08a"), "K": hexc("#94462a"), "L": hexc("#e89a5a"), "R": hexc("#c0663a"),
+            "r": hexc("#94462a"), "d": hexc("#6a2e1e"), "t": hexc("#3a2a2a"), "B": hexc("#ffe08a"),
+            "b": hexc("#a8702a")})
+
+
+def paper_lantern(S):
+    """Ribbed red chochin with dark rings, a loop and a tassel (as make_paper_lantern.py)."""
+    S.rows(["......GG........",
+            "....OOOOOO......",
+            "....OccCCO......",
+            "...OOOOOOOO.....",
+            "..OLRRRRRRdO....",
+            ".OLMrrrrrrrdO...",
+            ".OLRRRRRRRRdO...",
+            ".OWMrrrrrrrdO...",
+            ".OLRRRRRRRRdO...",
+            ".OLMrrrrrrrdO...",
+            "..OLRRRRRRdO....",
+            "...OOOOOOOO.....",
+            "....OccCCO......",
+            "....OOOOOO......",
+            "......TT........",
+            "......Tt........"],
+           {"O": hexc("#5e1c24"), "L": hexc("#ffb08a"), "M": hexc("#f27a5c"), "R": hexc("#e0503f"),
+            "r": hexc("#b83a34"), "d": hexc("#a8332f"), "W": hexc("#fff4ee"), "c": hexc("#7e78a0"),
+            "C": hexc("#4e4870"), "G": hexc("#e0a83a"), "T": hexc("#e0503f"), "t": hexc("#a8332f")})
+
+
+ORDER = ["strawberry", "seashell", "old_record", "hammer", "hot_cocoa", "crystal", "music_box", "pickaxe",
+         "sushi_roll", "lucky_cat", "taiko_drum", "paper_lantern"]
+DRAWN = {"old_record": record, "pickaxe": pickaxe, "sushi_roll": sushi_roll, "lucky_cat": lucky_cat,
+         "taiko_drum": taiko_drum, "paper_lantern": paper_lantern}
 for gid in ORDER:
     S = Sprite(16, 16)
     if gid in DRAWN:

@@ -40,12 +40,15 @@ export function deckCards(data: GameData, state: RunState, locationId: string): 
   data = areaView(data, state.area);
   const used: Record<Role, number> = { supplier: 0, buyer: 0 };
   for (const id of state.locations.find((l) => l.id === locationId)?.actorIds ?? []) {
-    used[data.actors[id].role] += data.actors[id].goods.length;
+    const role = data.actors[id].role;
+    // the weekly bad deal doesn't draw a card
+    used[role] += data.actors[id].goods.filter((g) => !isBadToday(state, role, g.good)).length;
   }
   return used;
 }
 
-/** An actor good's price at a tier (sellers have no bad price and never roll one). */
+/** An actor good's price at a tier (sellers have no bad price; buyers only use theirs on the
+ *  weekly bad day). */
 export function tierPrice(prices: ActorGood['prices'], tier: Tier): number {
   const p = prices[tier];
   if (p === undefined) throw new Error(`no ${tier} price`);
@@ -60,6 +63,24 @@ export function dealPrice(state: RunState, prices: ActorGood['prices'], tier: Ti
   return Math.max(1, prices.good + CONFIG.dealer.cramazing * (p - prices.good));
 }
 
+/** A price at today's bustling location (Fireworks Night): buyers pay `buyBonus` more and sellers
+ *  charge `sellDiscount` less, rounded to whole dollars (sellers never below $1). */
+export function bustlePrice(data: GameData, state: RunState, role: Role, price: number): number {
+  const b = todayEvent(data, state)?.bustling;
+  if (!b) return price;
+  return role === 'buyer' ? Math.round(price * (1 + b.buyBonus)) : Math.max(1, Math.round(price * (1 - b.sellDiscount)));
+}
+
+/** An offer's base price (`Offer.price`) at a tier: the tier price with Cramazing, then a seller's
+ *  discounts, then the bustling change if it's at the bustling location. */
+export function offerPrice(
+  data: GameData, state: RunState, good: string, role: Role, prices: ActorGood['prices'], tier: Tier, bustling = false,
+): number {
+  const base = dealPrice(state, prices, tier);
+  const p = role === 'supplier' ? sellerPrice(data, state, good, base) : base;
+  return bustling ? bustlePrice(data, state, role, p) : p;
+}
+
 /** A seller's base daily stock for a good of `category`, picked evenly from CONFIG.stockRange. */
 export function rollStock(r: Rng, category: string): number {
   const range = CONFIG.stockRange[category];
@@ -68,16 +89,17 @@ export function rollStock(r: Rng, category: string): number {
 }
 
 /** A seller's or buyer's tier weights for a good after the Dealer's luck perks (its category's, plus
- *  the all-goods one): great and amazing gain, and bad pays for both, then good once bad is gone
- *  (sellers have no bad, so good pays). */
-export function tierWeights(data: GameData, state: RunState, good: string, role: Role): Partial<Record<Tier, number>> {
-  const buyer = state.quota.index === 0 ? CONFIG.firstQuotaBuyerDealWeights : CONFIG.buyerDealWeights;
-  const w = role === 'supplier' ? CONFIG.dealWeights : buyer;
+ *  the all-goods one): great and amazing gain, and good pays for both. Sellers and buyers roll
+ *  the same weights (a buyer is only bad on the weekly bad day, which luck doesn't touch). */
+export function tierWeights(data: GameData, state: RunState, good: string, _role: Role): Partial<Record<Tier, number>> {
+  const w = CONFIG.dealWeights;
   const s = (state.perks.luck[categoryOf(data, good)] ?? 0) + state.perks.luckAll;
-  const bad = Math.max(0, (w.bad ?? 0) - 2 * s);
-  const fromGood = 2 * s - ((w.bad ?? 0) - bad);
-  const out = { good: Math.max(0, (w.good ?? 0) - fromGood), great: (w.great ?? 0) + s, amazing: (w.amazing ?? 0) + s };
-  return w.bad === undefined ? out : { bad, ...out };
+  return { good: Math.max(0, (w.good ?? 0) - 2 * s), great: (w.great ?? 0) + s, amazing: (w.amazing ?? 0) + s };
+}
+
+/** Is this actor good today's weekly bad deal (a buyer of `state.badGood`)? */
+export function isBadToday(state: RunState, role: Role, good: string): boolean {
+  return role === 'buyer' && !!state.badGood && good === state.badGood;
 }
 
 /** A seller's price after the Dealer's discounts on its category (the good's own `dealerDiscount`)
@@ -114,25 +136,30 @@ export function rollMarket(data: GameData, state: RunState): Record<string, Offe
   const limit = todayEvent(data, state)?.buyerLimit;
   for (const loc of state.locations) {
     const next = { ...state.deck };
+    const bustling = loc.id === state.bustlingAt;
     for (const actorId of loc.actorIds) {
       const role = data.actors[actorId].role;
       const seller = role === 'supplier';
       for (const ag of data.actors[actorId].goods) {
         const r = rngFor(state.seed, 'market', state.day, actorId, ag.good);
         const roll = r.next(); // drawn either way, so stock rolls don't depend on the deck switch
-        const u = CONFIG.tierDeck ? deckCard(state.seed, role, state.quota.index, next[role]++) : roll;
-        const tier = tierAt(u, tierWeights(data, state, ag.good, role));
-        const base = dealPrice(state, ag.prices, tier);
-        const price = seller ? sellerPrice(data, state, ag.good, base) : base;
+        // the weekly bad deal is fixed and draws no card
+        const bad = isBadToday(state, role, ag.good);
+        const u = bad ? 0 : CONFIG.tierDeck ? deckCard(state.seed, role, state.quota.index, next[role]++) : roll;
+        const tier: Tier = bad ? 'bad' : tierAt(u, tierWeights(data, state, ag.good, role));
+        const price = offerPrice(data, state, ag.good, role, ag.prices, tier, bustling);
+        const bust = bustling ? { bustling: true } : {};
         if (seller) {
-          market[offerKey(actorId, ag.good)] = { tier, price, left: sellerStock(data, state, ag.good, rollStock(r, categoryOf(data, ag.good))) };
+          market[offerKey(actorId, ag.good)] = {
+            tier, price, left: sellerStock(data, state, ag.good, rollStock(r, categoryOf(data, ag.good))), ...bust,
+          };
           continue;
         }
         const demand = r.int(ag.qtyMin, ag.qtyMax) + extraDemand(data, state, ag.good);
         market[offerKey(actorId, ag.good)] =
           limit === undefined
-            ? { tier, price, left: demand }
-            : { tier, price, left: CONFIG.limitDemand ? Math.min(demand, limit) : limit, capped: true };
+            ? { tier, price, left: demand, ...bust }
+            : { tier, price, left: CONFIG.limitDemand ? Math.min(demand, limit) : limit, capped: true, ...bust };
       }
     }
   }

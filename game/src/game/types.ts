@@ -23,8 +23,31 @@ export interface CategoryDef {
   name: string;
 }
 
-/** Animated weather drawn over the map and the locations. */
-export type Weather = 'snow' | 'rain';
+/** Animated weather drawn over the map and the locations. `lanterns` is drifting lantern light
+ *  (plus fireflies and twinkling stars where a place has them); `fireworks` adds bursts above it;
+ *  `blizzard` is the snow, thicker and faster. */
+export type Weather = 'snow' | 'blizzard' | 'rain' | 'lanterns' | 'fireworks';
+
+/** A place's night-sky extras (on the map: its area; at a location: that location), used by the
+ *  lantern weather. */
+export interface WeatherSpots {
+  /** Path of a JSON list of `[x, y]` stars baked into the background, written by its art script. */
+  stars?: string;
+  /** The stars, loaded from `stars` by `loadData`. */
+  starPoints?: [number, number][];
+  /** Where fireflies wander (over greenery). */
+  fireflies?: { x: number; y: number; w: number; h: number };
+}
+
+/** One location a day is bustling (Fireworks Night): an extra actor and better prices both ways. */
+export interface Bustling {
+  /** Extra actors dealt there. */
+  extraActors: number;
+  /** Buyers there pay this much more (0.25 = +25%). */
+  buyBonus: number;
+  /** Sellers there charge this much less. */
+  sellDiscount: number;
+}
 
 /** Something that happens in an area from `fromDay` until the run leaves it. */
 export interface AreaEvent {
@@ -37,10 +60,14 @@ export interface AreaEvent {
   weather?: Weather;
   /** Every buyer takes at most this many units of its good a day. */
   buyerLimit?: number;
+  /** One location a day is bustling. */
+  bustling?: Bustling;
+  /** One location a day is snowed in: the map doesn't show what's there until you go. */
+  snowedIn?: boolean;
 }
 
 /** A region with its own map, locations and goods. The run moves on to the next one on `fromDay`. */
-export interface AreaDef {
+export interface AreaDef extends WeatherSpots {
   id: string;
   name: string;
   blurb: string;
@@ -82,7 +109,7 @@ export interface Point {
   y: number;
 }
 
-export interface LocationDef {
+export interface LocationDef extends WeatherSpots {
   id: string;
   name: string;
   area: string;
@@ -122,6 +149,8 @@ export interface Offer {
   left: number;
   /** A buyer whose demand today's event caps (at `left`), even with CONFIG.limitDemand off. */
   capped?: boolean;
+  /** The price includes today's bustling bonus or discount (Fireworks Night). */
+  bustling?: boolean;
   /** Units sold to this buyer today, and whether it has paid the Tip Jar stamp's tip. */
   sold?: number;
   tipped?: boolean;
@@ -275,6 +304,14 @@ export interface RunState {
   detoured?: string | null;
   /** The location with an extra actor today (Packed House), or null. */
   packedAt?: string | null;
+  /** The bustling location today (Fireworks Night), or null. Optional so older saves still load. */
+  bustlingAt?: string | null;
+  /** The snowed-in location today (Blizzard), or null. Optional so older saves still load. */
+  snowedAt?: string | null;
+  /** The good whose buyers are all bad today (the weekly bad day), or null, and the last week
+   *  (0-based) that had one. Optional so older saves still load. */
+  badGood?: string | null;
+  badWeek?: number;
   /** Ids of the area events whose notice has been shown. Optional so older saves still load. */
   eventsSeen?: string[];
   status: 'active' | 'failed';

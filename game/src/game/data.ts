@@ -36,6 +36,17 @@ export function buildData(
       if (e.fromDay < area.fromDay || e.fromDay >= next) errors.push(`event ${e.id}: day ${e.fromDay} is outside area ${area.id}`);
       if (e.buyerLimit !== undefined && !(Number.isInteger(e.buyerLimit) && e.buyerLimit >= 1))
         errors.push(`event ${e.id}: buyerLimit must be a whole number >= 1`);
+      const b = e.bustling;
+      if (b) {
+        if (!(Number.isInteger(b.extraActors) && b.extraActors >= 0)) errors.push(`event ${e.id}: bustling.extraActors must be a whole number >= 0`);
+        if (!(b.buyBonus >= 0)) errors.push(`event ${e.id}: bustling.buyBonus must be >= 0`);
+        if (!(b.sellDiscount >= 0 && b.sellDiscount < 1)) errors.push(`event ${e.id}: bustling.sellDiscount must be in 0..1`);
+        // each good appears on at most one actor per location
+        const goodsHere = goods.filter((g) => g.area === area.id).length;
+        for (const l of here)
+          if (l.actorSlots + b.extraActors > goodsHere)
+            errors.push(`event ${e.id}: ${l.id} can't hold ${l.actorSlots + b.extraActors} actors (${goodsHere} goods)`);
+      }
     }
   }
   for (const g of goods) {
@@ -91,5 +102,12 @@ export async function loadData(): Promise<GameData> {
     get<CategoryDef[]>('categories'),
     get<AreaDef[]>('areas'),
   ]);
+  // the stars baked into backgrounds, for the lantern weather's twinkle (a missing file just means none)
+  await Promise.all(
+    [...areas, ...locations].filter((x) => x.stars).map(async (x) => {
+      const res = await fetch(x.stars!).catch(() => null);
+      x.starPoints = res?.ok ? ((await res.json()) as [number, number][]) : [];
+    }),
+  );
   return buildData(goods, actors, locations, dealer, categories, areas);
 }

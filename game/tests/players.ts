@@ -111,8 +111,16 @@ export function score(s: RunState, loc: string, bias: Bias = noBias): number {
   return v;
 }
 
-const best = (s: RunState, value: (loc: string) => number) =>
-  s.locations.map((l) => l.id).reduce((b, l) => (value(l) > value(b) ? l : b));
+/** The location worth the most. A snowed-in one (Blizzard) can't be seen from the map, so it's
+ *  valued at the average of the others. */
+const best = (s: RunState, value: (loc: string) => number) => {
+  const ids = s.locations.map((l) => l.id);
+  const seen = ids.filter((l) => l !== s.snowedAt);
+  const known = new Map(seen.map((l) => [l, value(l)]));
+  const guess = seen.length > 0 ? [...known.values()].reduce((a, b) => a + b, 0) / seen.length : 0;
+  const v = (l: string) => known.get(l) ?? guess;
+  return ids.reduce((b, l) => (v(l) > v(b) ? l : b));
+};
 
 export const sensible: Policy = (s) => best(s, (l) => score(s, l));
 export const random: Policy = (s, rng) => s.locations[Math.floor(rng() * s.locations.length)].id;

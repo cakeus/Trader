@@ -8,8 +8,8 @@ const LOCATION_REROLLS = 20;
 /**
  * Deal today's actors out to the run's locations. Constraints:
  *  - each location gets exactly `actorSlots` actors (any mix of buyers and sellers), except
- *    `dealerAt`, which gets one fewer because the Dealer takes that spot, and `extraAt` (the
- *    Packed House stamp), which gets one more;
+ *    `dealerAt`, which gets one fewer because the Dealer takes that spot, and the locations in
+ *    `extra` (Packed House, the bustling location), which get that many more;
  *  - no actor is in two places at once;
  *  - each good appears on at most one actor per location (so a location never
  *    buys and sells the same good, and never has two buyers or two sellers of it);
@@ -19,7 +19,7 @@ const LOCATION_REROLLS = 20;
  *    have nothing to offer, so it's rerolled the same way.
  * For each good in `requireBuyersOf`, a random buyer of it is placed first at a random location
  * (the next one with room, if that one is full), so at least one buyer of it is present today.
- * Deterministic for (seed, day, requireBuyersOf, dealerAt, needSeller, extraAt).
+ * Deterministic for (seed, day, requireBuyersOf, dealerAt, needSeller, extra).
  */
 export function dealActors(
   data: GameData,
@@ -29,14 +29,14 @@ export function dealActors(
   requireBuyersOf: string[] = [],
   dealerAt?: string,
   needSeller = false,
-  extraAt?: string | null,
+  extra: Record<string, number> = {},
 ): Record<string, string[]> {
   const all = Object.keys(data.actors).sort();
   const buyersOf = [...new Set(requireBuyersOf)].map((good) =>
     all.filter((id) => data.actors[id].role === 'buyer' && data.actors[id].goods.some((g) => g.good === good)),
   );
   const wants: Record<string, number> = Object.fromEntries(
-    locationIds.map((id) => [id, data.locations[id].actorSlots - (id === dealerAt ? 1 : 0) + (id === extraAt ? 1 : 0)]),
+    locationIds.map((id) => [id, data.locations[id].actorSlots - (id === dealerAt ? 1 : 0) + (extra[id] ?? 0)]),
   );
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const pool = rngFor(seed, 'deal', day, attempt).shuffle(all);

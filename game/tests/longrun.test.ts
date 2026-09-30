@@ -9,9 +9,10 @@
  *   DEALER=0.5 npm run sim              # Dealer visit chance per day
  *   DISABLED=discount npm run sim       # stamp kinds Nox won't offer (empty = all on)
  *   DECK=0 npm run sim                  # roll deal tiers independently instead of from the deck
- *   WEEK1BAD=0.2 npm run sim            # bad buyer weight during the first quota (the rest is good)
  *   HOLD=3 npm run sim                  # CGE focus holds a good until it can sell 3 to one buyer
  *   RAIN=0 npm run sim                  # profiles ignore the Rainstorm's buyer cap when buying
+ *   FIREWORKS=0 DAYS=63 npm run sim     # turn Lantern Crossing's Fireworks Night off
+ *   BLIZZARD=0 npm run sim              # turn Frostpine Peaks' Blizzard off
  */
 import { describe, expect, it } from 'vitest';
 import { rngFor } from '../src/engine/rng';
@@ -26,7 +27,8 @@ const DAYS = Number(env('DAYS') ?? 35);
 const GROWTH = (env('GROWTH') ?? String(CONFIG.quotaGrowth)).split(',').map(Number);
 const DEALER = Number(env('DEALER') ?? CONFIG.dealer.chance);
 const DECK = env('DECK') !== '0';
-const WEEK1BAD = Number(env('WEEK1BAD') ?? CONFIG.firstQuotaBuyerDealWeights.bad);
+if (env('BLIZZARD') === '0') data.areas.peaks.events = data.areas.peaks.events?.filter((e) => e.id !== 'blizzard');
+if (env('FIREWORKS') === '0') data.areas.crossing.events = data.areas.crossing.events?.filter((e) => e.id !== 'fireworks');
 const DISABLED = (env('DISABLED')?.split(',').filter(Boolean) ?? CONFIG.dealer.disabled) as DealerDeal['kind'][];
 
 interface Summary {
@@ -107,11 +109,9 @@ describe('balance: long run', () => {
   it('reports survival after each quota for every profile (log only)', () => {
     const saved = {
       growth: CONFIG.quotaGrowth, dealer: CONFIG.dealer.chance, disabled: CONFIG.dealer.disabled,
-      deck: CONFIG.tierDeck, week1: CONFIG.firstQuotaBuyerDealWeights,
+      deck: CONFIG.tierDeck,
     };
-    const base = CONFIG.buyerDealWeights;
     CONFIG.tierDeck = DECK;
-    CONFIG.firstQuotaBuyerDealWeights = { ...base, bad: WEEK1BAD, good: base.good + base.bad - WEEK1BAD };
     CONFIG.dealer.chance = DEALER;
     CONFIG.dealer.disabled = DISABLED;
     const avg = (n: number) => (n / RUNS).toFixed(1);
@@ -119,7 +119,7 @@ describe('balance: long run', () => {
     for (const g of GROWTH) {
       CONFIG.quotaGrowth = g;
       const amounts = Array.from({ length: Math.floor(DAYS / QUOTA_DAYS) }, (_, i) => `$${quotaFor(i).amount}`);
-      console.log(`\nquota growth x${g}: ${amounts.join(', ')}  (${RUNS} runs, to day ${DAYS}, dealer ${DEALER * 100}%, tier deck ${DECK ? 'on' : 'off'}, week-1 bad buyers ${WEEK1BAD * 100}%, stamps off: ${DISABLED.join(', ') || 'none'})`);
+      console.log(`\nquota growth x${g}: ${amounts.join(', ')}  (${RUNS} runs, to day ${DAYS}, dealer ${DEALER * 100}%, tier deck ${DECK ? 'on' : 'off'}, stamps off: ${DISABLED.join(', ') || 'none'})`);
       console.log(
         'profile        | ' + amounts.map((_, q) => `day ${String(QUOTA_DAYS * (q + 1)).padEnd(3)}`).join(' | ') +
           ' | end day | avg cash | stars got/spent | deals/run: bag disc stock dem luck all',
@@ -187,7 +187,6 @@ ${what} after each day's trading, by week: avg (min–max), over the run-days pl
       }
     }
     CONFIG.tierDeck = saved.deck;
-    CONFIG.firstQuotaBuyerDealWeights = saved.week1;
     CONFIG.quotaGrowth = saved.growth;
     CONFIG.dealer.chance = saved.dealer;
     CONFIG.dealer.disabled = saved.disabled;

@@ -41,7 +41,7 @@ export class LocationScene implements Scene {
     const run = app.run!;
     const def = app.data.locations[this.locId];
     drawBackground(ui, def.background);
-    drawWeather(ui, weatherOn(app.data, run.area, run.day));
+    drawWeather(ui, weatherOn(app.data, run.area, run.day), def);
 
     const nw = ui.font.measure(def.name, 2) + 28;
     ui.nine('panel_dark', { x: 8, y: HUD_H + 8, w: nw, h: 32 });
@@ -156,6 +156,11 @@ export class LocationScene implements Scene {
       const lines: { text: string; color: string; suffix?: string; suffixColor?: string }[] = [
         { text: `${data.goods[g.good].name}  $${price}`, color: C.cream, suffix: deal?.text, suffixColor: deal?.color },
       ];
+      const bustle = event?.bustling;
+      if (o.bustling && bustle) {
+        const pct = Math.round((seller ? bustle.sellDiscount : bustle.buyBonus) * 100);
+        lines.push({ text: `Bustling (${seller ? '-' : '+'}${pct}%)`, color: C.festive });
+      }
       if (seller ? CONFIG.limitStock : demandApplies(o)) {
         if (!seller && o.capped) {
           const text = o.left > 0 ? `${capLabel} (buys ${o.left})` : `${capLabel} (can't buy more)`;

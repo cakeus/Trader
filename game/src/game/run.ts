@@ -3,7 +3,8 @@ import { areaFor, areasInOrder, areaView } from './area';
 import { CONFIG } from './config';
 import { dealActors } from './deal';
 import { dealerBlock, owns, rollDealer } from './dealer';
-import { dealPrice, deckCards, offerKey, rollMarket, sellerPrice } from './economy';
+import { dealPrice, deckCards, offerKey, offerPrice, rollMarket, sellerPrice } from './economy';
+import { todayEvent } from './events';
 import type { BagItem, EndDayResult, GameData, Offer, Quota, RunState, SingleKind } from './types';
 
 export const START_CASH = 10;
@@ -78,13 +79,28 @@ function has(state: RunState, kind: SingleKind): boolean {
  *  On a quota's due day (and every day with the Dump Truck stamp), a buyer of the player's most
  *  common bag good is guaranteed to be present; with Perfect Planner, one of the priciest bag good.
  *  On other days, if the player can't buy anything, a buyer of something in the bag is (see rescueGood).
- *  With an empty bag, no location has only buyers. With Packed House, one location gets an extra actor. */
+ *  With an empty bag, no location has only buyers. With Packed House, one location gets an extra actor.
+ *  During Fireworks Night, one location is bustling (picked first): it gets the event's extra actors,
+ *  and neither the Dealer nor Packed House's extra actor goes there. During the Blizzard, one
+ *  location is snowed in (hidden on the map; it doesn't change the deal). */
 function startDay(data: GameData, state: RunState): void {
   data = areaView(data, state.area);
-  state.dealer = rollDealer(data, state);
   const ids = state.locations.map((l) => l.id);
+  const bustling = todayEvent(data, state)?.bustling;
+  state.bustlingAt = bustling ? ids[rngFor(state.seed, 'bustling', state.day).int(0, ids.length - 1)] : null;
+  state.snowedAt = todayEvent(data, state)?.snowedIn
+    ? ids[rngFor(state.seed, 'snowed', state.day).int(0, ids.length - 1)]
+    : null;
+  state.dealer = rollDealer(data, state);
   const dealerAt = state.dealer?.locationId;
-  state.packedAt = has(state, 'packedHouse') ? ids[rngFor(state.seed, 'packed', state.day).int(0, ids.length - 1)] : null;
+  const packable = ids.filter((id) => id !== state.bustlingAt);
+  state.packedAt =
+    has(state, 'packedHouse') && packable.length > 0
+      ? packable[rngFor(state.seed, 'packed', state.day).int(0, packable.length - 1)]
+      : null;
+  const extra: Record<string, number> = {};
+  if (state.packedAt) extra[state.packedAt] = 1;
+  if (state.bustlingAt && bustling) extra[state.bustlingAt] = bustling.extraActors;
   // with an empty bag, a buyers-only location has nothing for the player, so it's rerolled
   const needSeller = state.inventory.length === 0;
   const due = state.day === state.quota.dueDay;
@@ -93,15 +109,33 @@ function startDay(data: GameData, state: RunState): void {
   if (common && (due || has(state, 'dumpTruck'))) needs.push(common);
   const priciest = plannerGood(data, state);
   if (priciest && has(state, 'perfectPlanner')) needs.push(priciest);
-  const deal = (extra: string[] = []) =>
-    dealActors(data, state.seed, state.day, ids, [...needs, ...extra], dealerAt, needSeller, state.packedAt);
+  const deal = (more: string[] = []) =>
+    dealActors(data, state.seed, state.day, ids, [...needs, ...more], dealerAt, needSeller, extra);
   let dealt = deal();
   if (!due) {
     const rescue = rescueGood(data, state, Object.values(dealt).flat());
     if (rescue) dealt = deal([rescue]);
   }
   for (const loc of state.locations) loc.actorIds = dealt[loc.id];
+  state.badGood = rollBadDay(data, state);
+  if (state.badGood) state.badWeek = Math.floor((state.day - 1) / QUOTA_DAYS);
   state.market = rollMarket(data, state);
+}
+
+/** The weekly bad day: each week (days 7w+1 to 7w+7) has a day picked ahead of time from the
+ *  seed, never its last. On it, every buyer of a random good from the bag is a bad deal. With an
+ *  empty bag it moves to the next day, but never into the week's last day, and a week whose bag
+ *  stays empty has none. No bad day while an area event is on (each area's last week).
+ *  Returns today's bad good, or null. */
+export function rollBadDay(data: GameData, state: RunState): string | null {
+  const week = Math.floor((state.day - 1) / QUOTA_DAYS);
+  const first = week * QUOTA_DAYS + 1;
+  const last = first + QUOTA_DAYS - 2;
+  const planned = rngFor(state.seed, 'badDay', week).int(first, last);
+  if (state.day < planned || state.day > last || state.badWeek === week) return null;
+  if (todayEvent(data, state) || state.inventory.length === 0) return null;
+  const goods = [...new Set(state.inventory.map((it) => it.good))].sort();
+  return goods[rngFor(state.seed, 'badGood', state.day).int(0, goods.length - 1)];
 }
 
 /** The bag good that gets a guaranteed buyer on due day: the most common one; ties go to
@@ -384,7 +418,8 @@ export function sellUnits(data: GameData, state: RunState, actorId: string, good
     if (has(state, 'fuzzyDice') && o.tier !== 'amazing' &&
         rngFor(state.seed, 'dice', state.day, actorId, goodId, o.sold).next() < d.fuzzyDiceChance) {
       // keeps any Can't Get Enough raises
-      o.price += dealPrice(state, prices, 'amazing') - dealPrice(state, prices, o.tier);
+      o.price += offerPrice(data, state, goodId, 'buyer', prices, 'amazing', o.bustling) -
+        offerPrice(data, state, goodId, 'buyer', prices, o.tier, o.bustling);
       o.tier = 'amazing';
       sale.lucky = true;
     }

@@ -23,5 +23,18 @@
     "blurb": "Wind it up for a lullaby about snow that never melts." },
   { "id": "pickaxe", "name": "Pickaxe", "category": "tools", "area": "peaks",
     "icon": "assets/goods/pickaxe.png", "iconSmall": "assets/goods/pickaxe_8.png", "iconMedium": "assets/goods/pickaxe_16.png", "dealerDiscount": 4,
-    "blurb": "For ice, rock, and very stubborn jam jars." }
+    "blurb": "For ice, rock, and very stubborn jam jars." },
+
+  { "id": "sushi_roll", "name": "Sushi Roll", "category": "food", "area": "crossing",
+    "icon": "assets/goods/sushi_roll.png", "iconSmall": "assets/goods/sushi_roll_8.png", "iconMedium": "assets/goods/sushi_roll_16.png", "dealerDiscount": 4,
+    "blurb": "Rice, fish, and a little seaweed jacket. Eat it before the conveyor belt takes it back." },
+  { "id": "lucky_cat", "name": "Lucky Cat", "category": "treasure", "area": "crossing",
+    "icon": "assets/goods/lucky_cat.png", "iconSmall": "assets/goods/lucky_cat_8.png", "iconMedium": "assets/goods/lucky_cat_16.png", "dealerDiscount": 4,
+    "blurb": "Left paw up for customers, right paw up for money. This one's waving both." },
+  { "id": "taiko_drum", "name": "Taiko Drum", "category": "music", "area": "crossing",
+    "icon": "assets/goods/taiko_drum.png", "iconSmall": "assets/goods/taiko_drum_8.png", "iconMedium": "assets/goods/taiko_drum_16.png", "dealerDiscount": 4,
+    "blurb": "Big, round, and loud enough to hear three stations away." },
+  { "id": "paper_lantern", "name": "Paper Lantern", "category": "tools", "area": "crossing",
+    "icon": "assets/goods/paper_lantern.png", "iconSmall": "assets/goods/paper_lantern_8.png", "iconMedium": "assets/goods/paper_lantern_16.png", "dealerDiscount": 8,
+    "blurb": "Paper, bamboo, and a little flame. Hang one out and the night comes to you." }
 ]

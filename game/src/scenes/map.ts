@@ -32,7 +32,7 @@ export class MapScene implements Scene {
     }
     const area = app.data.areas[run.area];
     drawBackground(ui, area.map);
-    drawWeather(ui, weatherOn(app.data, run.area, run.day));
+    drawWeather(ui, weatherOn(app.data, run.area, run.day), area);
     this.eventNotice(ui, dt);
 
     for (const loc of run.locations) {
@@ -50,6 +50,20 @@ export class MapScene implements Scene {
       ui.image('assets/ui/icon_pin.png', x - 8, y - 17 + bob);
       ui.nine(hot && !left ? 'row_hover' : 'panel', label);
       ui.text(def.name, x, label.y + 7, left ? C.inkSoft : C.ink, { align: 'center' });
+      // snowed in (Blizzard): a lumpy cap of snow on the label
+      if (run.snowedAt === loc.id) {
+        const { ctx } = ui;
+        // frosted over, under a lumpy cap of snow with a blue shadow so it shows on the snowy map
+        ctx.fillStyle = 'rgba(225,235,255,0.55)';
+        ctx.fillRect(label.x + 1, label.y + 1, label.w - 2, label.h - 2);
+        ctx.fillStyle = '#8898c8';
+        ctx.fillRect(label.x + 1, label.y + 3, label.w - 2, 1);
+        for (let sx = label.x + 5; sx < label.x + label.w - 8; sx += 9) ctx.fillRect(sx, label.y + 4, 3, 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(label.x, label.y - 1, label.w, 4);
+        for (let sx = label.x + 3; sx < label.x + label.w - 7; sx += 9) ctx.fillRect(sx, label.y - 3, 5, 2);
+        for (let sx = label.x + 5; sx < label.x + label.w - 8; sx += 9) ctx.fillRect(sx, label.y + 3, 3, 1);
+      }
       ui.ctx.globalAlpha = 1;
 
       const go = () => {
@@ -90,21 +104,25 @@ export class MapScene implements Scene {
     const data = this.app.view;
     const run = this.app.run!;
     const def = data.locations[locId];
+    // snowed in (Blizzard): nothing about who's here shows until you go
+    const snowed = run.snowedAt === locId;
     // goods traded here, from the player's point of view (one actor per good at a location)
     const goodsFor = (role: Role) =>
-      actorIds
+      (snowed ? [] : actorIds)
         .filter((id) => data.actors[id].role === role)
         .flatMap((id) => data.actors[id].goods.map((g) => ({ actorId: id, good: g.good })));
     const cols = [
       { label: 'Buys', color: C.sky, role: 'buyer' as Role, goods: goodsFor('buyer') },
       { label: 'Sells', color: C.greenLight, role: 'supplier' as Role, goods: goodsFor('supplier') },
     ].filter((c) => c.goods.length > 0);
-    const dealer = run.dealer?.locationId === locId;
+    const dealer = !snowed && run.dealer?.locationId === locId;
     // Bird's Eye: today's price under each good, colored by its deal
     const prices = owns(run, { kind: 'birdsEye' });
     const notes = [
       ...(run.detoured === locId ? [{ text: 'Visited today', color: C.redLight }] : []),
-      ...(run.packedAt === locId ? [{ text: 'Packed house! +1 trader', color: C.cyan }] : []),
+      ...(snowed ? [{ text: 'Snowed in! Go and see', color: C.sky }] : []),
+      ...(run.packedAt === locId && !snowed ? [{ text: 'Packed house! +1 trader', color: C.cyan }] : []),
+      ...(run.bustlingAt === locId ? [{ text: 'Bustling! Better prices', color: C.festive }] : []),
     ];
 
     const w = 165;

@@ -165,5 +165,89 @@
     "portrait": "assets/actors/scramble.png",
     "blurb": "A mountain goat ice-climber. Goes up with two pickaxes, eats one on the way down.",
     "goods": [
-      {"good": "pickaxe", "prices": {"bad": 16, "good": 20, "great": 24, "amazing": 26}, "qtyMin": 1, "qtyMax": 2} ] }
+      {"good": "pickaxe", "prices": {"bad": 16, "good": 20, "great": 24, "amazing": 26}, "qtyMin": 1, "qtyMax": 2} ] },
+
+  { "id": "mister_kaiten", "name": "Mister Kaiten", "role": "supplier",
+    "portrait": "assets/actors/mister_kaiten.png",
+    "blurb": "A sushi conveyor belt that learned to talk. Everything he says comes back around eventually.",
+    "goods": [
+      {"good": "sushi_roll", "prices": {"good": 12, "great": 8, "amazing": 4}, "qtyMin": 2, "qtyMax": 4} ] },
+  { "id": "chef_omakase", "name": "Chef Omakase", "role": "supplier",
+    "portrait": "assets/actors/chef_omakase.png",
+    "blurb": "Has run the same eight-seat counter for forty years. He chooses your sushi. He also chooses your seat.",
+    "goods": [
+      {"good": "sushi_roll", "prices": {"good": 12, "great": 8, "amazing": 4}, "qtyMin": 2, "qtyMax": 3} ] },
+  { "id": "kyu", "name": "Kyu the Kappa", "role": "buyer",
+    "portrait": "assets/actors/kyu.png",
+    "blurb": "Only eats cucumber rolls. They're called kappa maki after him, and he will mention it.",
+    "goods": [
+      {"good": "sushi_roll", "prices": {"bad": 8, "good": 12, "great": 16, "amazing": 20}, "qtyMin": 2, "qtyMax": 4} ] },
+  { "id": "hachi", "name": "Hachi", "role": "buyer",
+    "portrait": "assets/actors/hachi.png",
+    "blurb": "Meets the last train at Midnight Station every night, with a sushi roll for whoever gets off.",
+    "goods": [
+      {"good": "sushi_roll", "prices": {"bad": 8, "good": 12, "great": 16, "amazing": 20}, "qtyMin": 1, "qtyMax": 3} ] },
+
+  { "id": "gacha_chan", "name": "Gacha-chan", "role": "supplier",
+    "portrait": "assets/actors/gacha_chan.png",
+    "blurb": "Turn his crank and out pops a lucky cat. Usually.",
+    "goods": [
+      {"good": "lucky_cat", "prices": {"good": 16, "great": 12, "amazing": 8}, "qtyMin": 2, "qtyMax": 4} ] },
+  { "id": "mochi", "name": "Mochi", "role": "supplier",
+    "portrait": "assets/actors/mochi.png",
+    "blurb": "Poses as a lucky cat in shop windows for a living. Sells the competition on the side.",
+    "goods": [
+      {"good": "lucky_cat", "prices": {"good": 16, "great": 12, "amazing": 8}, "qtyMin": 1, "qtyMax": 3} ] },
+  { "id": "karasu", "name": "Karasu", "role": "buyer",
+    "portrait": "assets/actors/karasu.png",
+    "blurb": "Has missed the last train again. Collects lucky cats for his desk; it isn't working yet.",
+    "goods": [
+      {"good": "lucky_cat", "prices": {"bad": 8, "good": 16, "great": 20, "amazing": 24}, "qtyMin": 2, "qtyMax": 3} ] },
+  { "id": "kirara", "name": "Kirara", "role": "buyer",
+    "portrait": "assets/actors/kirara.png",
+    "blurb": "Keeps a lucky cat for every concert. She has had a lot of concerts.",
+    "goods": [
+      {"good": "lucky_cat", "prices": {"bad": 8, "good": 16, "great": 20, "amazing": 24}, "qtyMin": 1, "qtyMax": 3} ] },
+
+  { "id": "goro", "name": "Goro", "role": "supplier",
+    "portrait": "assets/actors/goro.png",
+    "blurb": "Drums up the summer storms and sells last season's drums. Accepts belly buttons as a tip.",
+    "goods": [
+      {"good": "taiko_drum", "prices": {"good": 28, "great": 24, "amazing": 20}, "qtyMin": 1, "qtyMax": 2} ] },
+  { "id": "kabuto", "name": "Kabuto", "role": "supplier",
+    "portrait": "assets/actors/kabuto.png",
+    "blurb": "Carves every drum from a single log, mostly with his horn.",
+    "goods": [
+      {"good": "taiko_drum", "prices": {"good": 28, "great": 24, "amazing": 20}, "qtyMin": 1, "qtyMax": 3} ] },
+  { "id": "kenji", "name": "Kenji the Kaiju", "role": "buyer",
+    "portrait": "assets/actors/kenji.png",
+    "blurb": "In from the bay for the night. Keeps trying to play the drums gently. Keeps flattening them.",
+    "goods": [
+      {"good": "taiko_drum", "prices": {"bad": 20, "good": 28, "great": 36, "amazing": 40}, "qtyMin": 1, "qtyMax": 3} ] },
+  { "id": "ponpoko", "name": "Ponpoko", "role": "buyer",
+    "portrait": "assets/actors/ponpoko.png",
+    "blurb": "Has drummed on his own belly for years. Would like to try something that doesn't hurt.",
+    "goods": [
+      {"good": "taiko_drum", "prices": {"bad": 20, "good": 28, "great": 36, "amazing": 40}, "qtyMin": 1, "qtyMax": 2} ] },
+
+  { "id": "old_chochin", "name": "Old Chochin", "role": "supplier",
+    "portrait": "assets/actors/old_chochin.png",
+    "blurb": "A paper lantern that came to life on its hundredth birthday. Swears the ones he sells are just lanterns.",
+    "goods": [
+      {"good": "paper_lantern", "prices": {"good": 40, "great": 36, "amazing": 28}, "qtyMin": 1, "qtyMax": 3} ] },
+  { "id": "orika", "name": "Orika", "role": "supplier",
+    "portrait": "assets/actors/orika.png",
+    "blurb": "Folds lanterns between flights. The paper keeps trying to become more cranes.",
+    "goods": [
+      {"good": "paper_lantern", "prices": {"good": 40, "great": 36, "amazing": 28}, "qtyMin": 1, "qtyMax": 2} ] },
+  { "id": "tsuki", "name": "Tsuki", "role": "buyer",
+    "portrait": "assets/actors/tsuki.png",
+    "blurb": "Comes down for moon viewing at Stargazer's Lookout. Needs a lantern to find the way back up.",
+    "goods": [
+      {"good": "paper_lantern", "prices": {"bad": 32, "good": 40, "great": 48, "amazing": 52}, "qtyMin": 1, "qtyMax": 3} ] },
+  { "id": "taisho", "name": "Taisho", "role": "buyer",
+    "portrait": "assets/actors/taisho.png",
+    "blurb": "A red lantern out front means 'we're open.' He is very, very open.",
+    "goods": [
+      {"good": "paper_lantern", "prices": {"bad": 32, "good": 40, "great": 48, "amazing": 52}, "qtyMin": 1, "qtyMax": 2} ] }
 ]

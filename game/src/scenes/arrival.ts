@@ -50,7 +50,7 @@ export class AreaTransition implements Scene {
       const old = app.data.areas[this.from!];
       drawBackground(ui, old.map);
       // the old area's weather on its last day
-      drawWeather(ui, weatherOn(app.data, this.from!, run.day - 1));
+      drawWeather(ui, weatherOn(app.data, this.from!, run.day - 1), old);
       if (this.phase === 'quota') {
         // show the quota result on the first frame (the constructor runs before `app.goto`
         // replaces the stack), then wait for it to be closed
@@ -73,7 +73,7 @@ export class AreaTransition implements Scene {
 
     const area = app.data.areas[run.area];
     drawBackground(ui, area.map);
-    drawWeather(ui, weatherOn(app.data, run.area, run.day));
+    drawWeather(ui, weatherOn(app.data, run.area, run.day), area);
     ui.dim(Math.max(0, 1 - this.t / FADE_IN), '26,20,38');
 
     if (this.leaving < 0 && (this.t >= TITLE_HOLD || (this.t > 0.6 && (ui.clicked({ x: 0, y: 0, w: W, h: H }) || ui.key('Enter')))))
