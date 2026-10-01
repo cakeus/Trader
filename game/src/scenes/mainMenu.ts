@@ -65,8 +65,8 @@ export class MainMenu implements Scene {
       ui.image(g.icon, Math.round(x + f.x), Math.round(y + f.y + bob));
     });
 
-    ui.text('Trader', W / 2, 78, C.gold, { align: 'center', scale: 6, shadow: C.shadow });
-    ui.text('a tiny trading roguelike', W / 2, 138, C.cream, { align: 'center', shadow: C.shadow });
+    ui.text('Higgle', W / 2, 78, C.gold, { align: 'center', scale: 6, shadow: C.shadow });
+    ui.text('a tiny trading game', W / 2, 138, C.cream, { align: 'center', shadow: C.shadow });
 
     const bx = W / 2 - 80;
     if (ui.button({ x: bx, y: 214, w: 160, h: 30 }, 'New Run')) this.newRun();
