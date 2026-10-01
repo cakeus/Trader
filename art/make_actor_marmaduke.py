@@ -1,5 +1,5 @@
 """Foreman Marmaduke: a chubby golden marmot mine boss in an orange hard hat
-with a headlamp, a hi-vis vest, a whistle and a clipboard of lost pickaxes."""
+with a headlamp, a hi-vis vest, a whistle and a clipboard of lost mittens."""
 from pixelkit import hexc, ellipse, edge, rect
 from portraitkit import new, poly, line, eye, blush, clip, finish, GLINT
 
@@ -50,7 +50,7 @@ board = rect(41, 50, 12, 14)
 S.blob(board, BOARD, BD_OUT, cuts=(-0.3, 0.4))
 paper = rect(43, 52, 8, 12)
 S.fill(paper, PAPER)
-for y in (54, 57, 60):   # tally marks of lost pickaxes
+for y in (54, 57, 60):   # tally marks of lost mittens
     for x in (44, 46, 48):
         S.set(x, y, INK)
         S.set(x, y + 1, INK)

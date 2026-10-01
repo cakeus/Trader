@@ -51,23 +51,41 @@ ICONS = {
         {"O": hexc("#7a2e4a"), "W": hexc("#fffaf2"), "L": hexc("#ffe4d6"), "P": hexc("#fbb9a4"),
          "S": hexc("#d9737a"), "d": hexc("#bf5f72"), "E": hexc("#f0a294"), "e": hexc("#b25c70")},
     ),
-    "hammer": (
-        ["..........OO....",
-         ".........OWWO...",
-         "........OWWSSO..",
-         ".......OWWSSSSO.",
-         "......OWSSSSSSdO",
-         "......OOSSSSSddO",
-         ".....OHhOSSSdddO",
-         "....OHHhOOSdddO.",
-         "...OHHhO..OddO..",
-         "..ORRhO....OO...",
-         ".ORRrO..........",
-         "ORRrO...........",
-         "ORrO............",
-         ".OO............."],
-        {"O": hexc("#2c3444"), "W": hexc("#eef3f8"), "S": hexc("#bac6d2"), "d": hexc("#7a889a"),
-         "H": hexc("#f0c488"), "h": hexc("#a8683a"), "R": hexc("#ff8a7a"), "r": hexc("#c03a44")},
+    "straw_hat": (
+        ["................",
+         ".....OOOOOO.....",
+         "....OWLLLLsO....",
+         "...OLLLLLLssO...",
+         "...OLLLLLssbO...",
+         ".OOORRRRRRrbbOO.",
+         "OLLORRRRRRrrbsLO",
+         "OLLLOOOOOOOObssO",
+         "OWLLLLLLLLLLsssO",
+         ".OLLLLLLLLLsssO.",
+         "..OOsLLLLLsssOO.",
+         "....OOOOOOOO...."],
+        {"O": hexc("#6b4220"), "W": hexc("#fff0b8"), "L": hexc("#f5d27a"), "s": hexc("#dcaa52"),
+         "R": hexc("#e8524a"), "r": hexc("#b0343a"), "b": hexc("#8a2630")},
+    ),
+    "kimono": (
+        ["....OOOOOOOO....",
+         "OOOOOcIIIICOOOOO",
+         "OLIIOLcIICiOIpiO",
+         "OLpIOLIcCiiOIIiO",
+         "OIIIOLICiiiOpIiO",
+         "OLIIOLCIiiiOIIiO",
+         "OIIpOKKKKKkOIiiO",
+         "OIIIOYYYYYYOIiiO",
+         "OiiiOKKKKkkOiiiO",
+         ".OOOOLsIIiiOOOO.",
+         "....OLsIpIiO....",
+         "....OIsIIiiO....",
+         "....OLsIIpiO....",
+         "....OIsIIiiO....",
+         "....OOOOOOOO...."],
+        {"O": hexc("#161a3c"), "L": hexc("#7d8fe0"), "I": hexc("#4c5cb4"), "i": hexc("#36448c"),
+         "s": hexc("#222b5e"), "p": hexc("#ffb6c8"), "c": hexc("#f0dcbc"), "C": hexc("#fffbea"),
+         "K": hexc("#f2727e"), "k": hexc("#c84a5e"), "Y": hexc("#ffe08a")},
     ),
     "hot_cocoa": (
         [".......Ss.......",
@@ -152,29 +170,30 @@ def record(S):
     S.set(4, 3, hexc("#fffaf0"))
 
 
-def pickaxe(S):
-    """Curved steel head upper-left, handle to the lower-right (as make_pickaxe.py)."""
-    wood = [hexc("#f0c488"), hexc("#d0924e"), hexc("#a8683a")]
-    steel = [hexc("#e4eef8"), hexc("#a8bcd4"), hexc("#7890b0"), hexc("#566a8c")]
-    r2 = 1 / math.sqrt(2)
-
-    def region(test):
-        m = set()
-        for y in range(16):
-            for x in range(16):
-                dx, dy = x + 0.5 - 14.5, y + 0.5 - 14.5
-                if test(-(dx + dy) * r2, (-dx + dy) * r2):
-                    m.add((x, y))
-        return m
-
-    L = 9.4
-    handle = region(lambda u, v: -0.5 <= u <= 13 and abs(v) <= 1.75)
-    wrap = region(lambda u, v: -0.5 <= u <= 4 and abs(v) <= 1.9)
-    head = region(lambda u, v: abs(v) <= L and abs(u - (13.4 - 3.8 * (v / L) ** 2))
-                  <= 2.0 * (1 - (abs(v) / L) ** 1.6) + 0.6)
-    S.blob(handle, wood, hexc("#4a2a1c"), lx=0.6, ly=0.6)
-    S.blob(wrap, [hexc("#8ab8c8"), hexc("#5a8aa0"), hexc("#3e6478")], hexc("#4a2a1c"), cuts=(-0.2, 0.5))
-    S.blob(head, steel, hexc("#27304a"), lx=0.65, ly=0.65, cuts=(-0.4, 0.15, 0.6))
+def wool_mittens(S):
+    """A red pair with cream cuffs and stripes, joined by a string (as make_wool_mittens.py)."""
+    front = [".OOOO...",
+             "OLRRrO..",
+             "OLRRrOO.",
+             "OLRRrOrO",
+             "OLRRrrrO",
+             "OWWWWwO.",
+             "OLRRrrO.",
+             "OccccO..",
+             "OCcCcO..",
+             "OOOOOO.."]
+    pal = {"O": hexc("#5e1c24"), "L": hexc("#ff9a86"), "R": hexc("#e8524a"), "r": hexc("#b8383c"),
+           "W": hexc("#fffbea"), "w": hexc("#f2e2c0"), "c": hexc("#f2e2c0"), "C": hexc("#c2a67c")}
+    back = dict(pal, L=hexc("#e8786a"), R=hexc("#c8443e"), r=hexc("#9c3036"))
+    # the back mitten, mirrored and higher, then the front one over it
+    # (mirroring moves the lit side to the right, so swap light and shade back)
+    S.rows([row[::-1].replace("L", "_").replace("r", "L").replace("_", "r") for row in front],
+           back, 8, 0)
+    S.rows(front, pal, 0, 4)
+    S.rows(["....y",
+            "...y.",
+            "..y..",
+            "yy..."], {"y": hexc("#f2e2c0")}, 7, 10)
 
 
 def sushi_roll(S):
@@ -199,25 +218,26 @@ def sushi_roll(S):
             "c": hexc("#a8e07a")})
 
 
-def lucky_cat(S):
-    """Gold maneki-neko waving both paws, red collar and bell (as make_lucky_cat.py)."""
-    S.rows(["...O......O.....",
-            "OO.OOO..OOO.OO..",
-            "OYOORLOOORROYO..",
-            "OyYOLYYYYYyOyYO.",
-            "OYyOWYYYYYYOYyO.",
-            ".OOWYFYYYFYyOO..",
-            "..OYYYYppYYyO...",
-            "..OYYYFYYFYdO...",
-            "..ORRRRRRRRrO...",
-            "..OYYYOGGOYdO...",
-            ".OYYYYOgdOYydO..",
-            ".OYYYYYOOYYddO..",
-            ".OYYYYYYyyyddO..",
-            "..OOOOOOOOOOO..."],
-           {"O": hexc("#6e4216"), "W": hexc("#fff2a8"), "Y": hexc("#ffd552"), "y": hexc("#e8a93a"),
-            "d": hexc("#b87426"), "L": hexc("#fff2a8"), "R": hexc("#e0503f"), "r": hexc("#a8332f"),
-            "F": hexc("#5a3212"), "p": hexc("#ff9a9a"), "G": hexc("#fff2a8"), "g": hexc("#e0a83a")})
+def capsule_toy(S):
+    """Gachapon capsule, clear aqua top with a chick inside, coral bottom (as make_capsule_toy.py)."""
+    S.rows(["....OOOOOOO....",
+            "..OOCWWCCCCOO..",
+            ".OCWCCCCCCCCcO.",
+            ".OWCCCCkCCCCcO.",
+            "OWCCkYYYYYkCccO",
+            "OCCCkYEYEYkcccO",
+            "OCCCkPYbYPkcccO",
+            "QQQQQQQQQQQQQQQ",
+            "QLGLLLLRRRRRRrQ",
+            ".QLRRRRRRRrrdQ.",
+            ".QRRRRRRRrrrdQ.",
+            "..QRRRRrrrrdQ..",
+            "...QQrrrrdQQ...",
+            ".....QQQQQ....."],
+           {"O": hexc("#2e5a6a"), "C": hexc("#c8f0ec"), "c": hexc("#9cd8da"), "W": hexc("#ffffff"),
+            "k": hexc("#7e6a3a"), "Y": hexc("#f4dc5a"), "E": hexc("#3a2a2a"), "b": hexc("#e88a4a"),
+            "P": hexc("#f0a49a"), "Q": hexc("#5a1c30"), "L": hexc("#ffb0a0"), "R": hexc("#f6766e"),
+            "r": hexc("#d2505a"), "d": hexc("#a0384a"), "G": hexc("#ffffff")})
 
 
 def taiko_drum(S):
@@ -243,33 +263,10 @@ def taiko_drum(S):
             "b": hexc("#a8702a")})
 
 
-def paper_lantern(S):
-    """Ribbed red chochin with dark rings, a loop and a tassel (as make_paper_lantern.py)."""
-    S.rows(["......GG........",
-            "....OOOOOO......",
-            "....OccCCO......",
-            "...OOOOOOOO.....",
-            "..OLRRRRRRdO....",
-            ".OLMrrrrrrrdO...",
-            ".OLRRRRRRRRdO...",
-            ".OWMrrrrrrrdO...",
-            ".OLRRRRRRRRdO...",
-            ".OLMrrrrrrrdO...",
-            "..OLRRRRRRdO....",
-            "...OOOOOOOO.....",
-            "....OccCCO......",
-            "....OOOOOO......",
-            "......TT........",
-            "......Tt........"],
-           {"O": hexc("#5e1c24"), "L": hexc("#ffb08a"), "M": hexc("#f27a5c"), "R": hexc("#e0503f"),
-            "r": hexc("#b83a34"), "d": hexc("#a8332f"), "W": hexc("#fff4ee"), "c": hexc("#7e78a0"),
-            "C": hexc("#4e4870"), "G": hexc("#e0a83a"), "T": hexc("#e0503f"), "t": hexc("#a8332f")})
-
-
-ORDER = ["strawberry", "seashell", "old_record", "hammer", "hot_cocoa", "crystal", "music_box", "pickaxe",
-         "sushi_roll", "lucky_cat", "taiko_drum", "paper_lantern"]
-DRAWN = {"old_record": record, "pickaxe": pickaxe, "sushi_roll": sushi_roll, "lucky_cat": lucky_cat,
-         "taiko_drum": taiko_drum, "paper_lantern": paper_lantern}
+ORDER = ["strawberry", "seashell", "old_record", "straw_hat", "hot_cocoa", "crystal", "music_box",
+         "wool_mittens", "sushi_roll", "capsule_toy", "taiko_drum", "kimono"]
+DRAWN = {"old_record": record, "wool_mittens": wool_mittens, "sushi_roll": sushi_roll,
+         "capsule_toy": capsule_toy, "taiko_drum": taiko_drum}
 for gid in ORDER:
     S = Sprite(16, 16)
     if gid in DRAWN:

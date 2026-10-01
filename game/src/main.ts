@@ -12,7 +12,7 @@ import { STAMP_IMAGES } from './scenes/stampArt';
 
 const UI_IMAGES = [
   'panel', 'panel_dark', 'btn', 'btn_hover', 'btn_down', 'btn_disabled', 'row', 'row_hover', 'cursor',
-  'icon_coin', 'icon_bag', 'icon_calendar', 'icon_check', 'icon_pin', 'icon_star', 'icon_flag',
+  'icon_coin', 'icon_bag', 'icon_calendar', 'icon_check', 'icon_pin', 'icon_star', 'icon_star16', 'icon_star24', 'icon_flag',
 ].map((n) => `assets/ui/${n}.png`);
 
 async function boot(): Promise<void> {

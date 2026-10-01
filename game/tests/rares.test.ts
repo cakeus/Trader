@@ -6,7 +6,8 @@
  * (days 8, 15, 22, …; seeded by the run only, so every variant of a run gets the same ones). The
  * baseline has only those; each rare variant is the same seed plus that rare on day 8. Profit is
  * the day's change in net worth (cash plus what the bag cost), so holding goods overnight and the
- * area move's buyback don't count. The rare's value is its variant's average daily profit minus
+ * end-of-week cash-out don't count (on a due day it's the week's final cash, less the cash the
+ * forced quota added, before the reset to starting cash). The rare's value is its variant's average daily profit minus
  * the baseline's, over the same seeds and days (from day 8).
  *
  *   npm run rares
@@ -57,14 +58,19 @@ function play(seed: number, rare: SingleKind | null, t: Tally): void {
     const before = worth(s);
     tradeAt(s, profile.pick(s, Math.random), profile);
     const cash = s.cash;
-    if (s.day >= s.quota.dueDay) debugSetQuotaMet(s, true);
+    const q = s.quota;
+    const due = s.day >= q.dueDay;
+    if (due) debugSetQuotaMet(data, s, true);
+    const forced = s.cash - cash;
     const day = s.day;
     endDay(data, s);
+    // on a due day, the week's final cash (before the reset), less what forcing the quota added
+    const after = due ? (q.finalCash ?? 0) - forced : worth(s);
     if (day >= GRANT_DAY) {
-      t.profit[area] += worth(s) - before; // the area move's buyback is at cost, so it nets out
+      t.profit[area] += after - before;
       t.days[area]++;
       t.cash[area] += cash;
-      total += worth(s) - before;
+      total += after - before;
     }
     if (s.status !== 'active') break; // won on the last day
   }

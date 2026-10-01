@@ -2,5 +2,5 @@
   { "id": "food", "name": "Food" },
   { "id": "treasure", "name": "Treasure" },
   { "id": "music", "name": "Music" },
-  { "id": "tools", "name": "Tools" }
+  { "id": "clothing", "name": "Clothing" }
 ]

@@ -1,19 +1,19 @@
 import { rngFor } from '../engine/rng';
 import { areaView, goodOf } from './area';
 import { CONFIG } from './config';
-import { bustlePrice, dealPrice, offerKey, offerPrice, stockMultiplier } from './economy';
+import { bustlePrice, buyerBonus, dealPrice, offerKey, offerPrice, stockMultiplier } from './economy';
 import { type ActorGood, type CategoryKind, type DealerDeal, type DealerOffer, type DealerVisit, type GameData, type RankedKind, RARITIES, type Rarity, type Role, type RunState, type SingleKind } from './types';
 
 export const BAG_TIERS = CONFIG.dealer.ranks.bag;
 
 const RANKED: RankedKind[] = ['bag', 'stockAll', 'buyerStockAll', 'luckAll'];
-const PER_CATEGORY: CategoryKind[] = ['discount', 'stock', 'buyerStock', 'luck'];
+const PER_CATEGORY: CategoryKind[] = ['discount', 'stock', 'buyerStock', 'luck', 'sellBonus'];
 /** The one-time stamps, in the order the collection lists them. */
 const SINGLES: SingleKind[] = [
   'discountAll', 'dailyDiscount', 'tip', 'cantGetEnough', 'collector',
   'birdsEye', 'haggler', 'fannyPack', 'packedHouse', 'cramazing', 'mixedBag', 'lastCall', 'bigTipper',
   'fuzzyDice', 'sleepingBag', 'campFire', 'monocle', 'detour', 'vintage', 'cleanSweep', 'flipper',
-  'perfectPlanner', 'dumpTruck',
+  'perfectPlanner', 'dumpTruck', 'nestEgg', 'goldenGoose',
 ];
 
 /** A deal's rarity (CONFIG.dealer.rarity; common unless listed). */
@@ -79,7 +79,7 @@ export function dealCost(deal: DealerDeal): number {
 }
 
 /** Every deal (stamp) in the game: every rank of the ranked deals, a discount (if the category's
- *  goods have one), extra stock, extra demand and better buyers per category, and the one-time
+ *  goods have one), extra stock, extra demand, better deals and better buyer prices per category, and the one-time
  *  stamps (SINGLES). Category deals work in every area. */
 export function allDeals(data: GameData): DealerDeal[] {
   const categories = Object.keys(data.categories);
@@ -305,6 +305,17 @@ export function grantDeal(data: GameData, state: RunState, deal: DealerDeal): vo
         });
       break;
     }
+    case 'sellBonus': {
+      // today's buyers of its good pay more right away (keeping any Can't Get Enough raises)
+      const g = good();
+      forTodays(data, state, 'buyer', g, (actorId, prices) => {
+        const offer = state.market[offerKey(actorId, g)];
+        const bustle = (p: number) => (offer.bustling ? bustlePrice(data, state, 'buyer', p) : p);
+        const base = dealPrice(state, prices, offer.tier);
+        offer.price += bustle(base + buyerBonus(data, state, g)) - bustle(base);
+      });
+      break;
+    }
     case 'luck':
       perks.luck[deal.category] = (perks.luck[deal.category] ?? 0) + CONFIG.dealer.luckStep;
       break;
@@ -379,6 +390,8 @@ export function describeDeal(data: GameData, deal: DealerDeal, areaId: string): 
       const pct = Math.round(d.luckStep * 100 * 2);
       return { title: `${cat} Dealer`, body: `+${pct}% more deals on ${what}.` };
     }
+    case 'sellBonus':
+      return { title: d.sellBonusNames[deal.category] ?? `${cat} Fan`, body: `Buyers pay $${d.sellBonus[deal.category]} more for ${what}.` };
     case 'buyerStock':
       return { title: `${cat} Demand`, body: `Buyers want ${d.buyerStockStep} more ${what} each day.` };
     case 'luckAll': {
@@ -412,7 +425,7 @@ export function describeDeal(data: GameData, deal: DealerDeal, areaId: string): 
     case 'mixedBag':
       return { title: 'Mixed Bag', body: `$${d.mixedBagTip} tip for each different good you sell a day.` };
     case 'lastCall':
-      return { title: 'Last Call', body: 'The last-chance buyer pays Amazing prices.' };
+      return { title: 'Last Call', body: 'The end-of-week cash-out pays Amazing prices when better.' };
     case 'bigTipper':
       return { title: 'Big Tipper', body: `Every tip is ${d.bigTipper}x bigger.` };
     case 'fuzzyDice':
@@ -435,5 +448,9 @@ export function describeDeal(data: GameData, deal: DealerDeal, areaId: string): 
       return { title: 'Perfect Planner', body: 'Your priciest good always has a buyer.' };
     case 'dumpTruck':
       return { title: 'Dump Truck', body: 'Your most common good always has a buyer.' };
+    case 'nestEgg':
+      return { title: 'Nest Egg', body: `Start every week with $${d.nestEgg} more.` };
+    case 'goldenGoose':
+      return { title: 'Golden Goose', body: 'Cash above each quota carries over into the next week.' };
   }
 }

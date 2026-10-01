@@ -1,7 +1,6 @@
 """Scramble: a shaggy white mountain goat ice-climber with curled horns,
-goggles pushed up, a rope coil on her shoulder and a pickaxe handle to chew."""
-import math
-
+goggles pushed up, a rope coil on her shoulder and a mitten dangling from her mouth, a bite
+already out of it."""
 from pixelkit import hexc, ellipse, edge, rect
 from portraitkit import new, poly, curve, eye, blush, clip, finish, fuzz, GLINT
 
@@ -21,41 +20,9 @@ LENS = [hexc("#e0fcff"), hexc("#7ad8f0"), hexc("#3e98c8"), hexc("#2a6a9c")]
 RIM = hexc("#2e1a52")
 NOSE = hexc("#8a6a80")
 MOUTH = hexc("#54567a")
-WOOD = [hexc("#f0c488"), hexc("#d0924e"), hexc("#a8683a"), hexc("#7e4a2a")]
-WOOD_OUT = hexc("#4a2a1c")
-STEEL = [hexc("#e4eef8"), hexc("#a8bcd4"), hexc("#7890b0"), hexc("#566a8c")]
-STEEL_OUT = hexc("#27304a")
-
-
-def pickaxe(S, base, top, half=11.0, bend=4.0, thick=2.4, hw=1.4):
-    """A pickaxe like the good's icon: handle from base to top, curved head at top."""
-    L = math.hypot(top[0] - base[0], top[1] - base[1])
-    D = ((top[0] - base[0]) / L, (top[1] - base[1]) / L)
-    N = (-D[1], D[0])
-
-    def frame(x, y):
-        dx, dy = x + 0.5 - base[0], y + 0.5 - base[1]
-        return dx * D[0] + dy * D[1], dx * N[0] + dy * N[1]
-
-    def region(test):
-        return {(x, y) for y in range(64) for x in range(64) if test(*frame(x, y))}
-
-    def hc(v):
-        t = min(1.0, abs(v) / half)
-        return L - bend * t * t
-
-    handle = region(lambda u, v: 0 <= u <= L and abs(v) <= hw)
-    head = region(lambda u, v: abs(v) <= half and
-                  abs(u - hc(v)) <= thick * (1 - min(1, abs(v) / half) ** 1.6) + 0.55)
-    collar = region(lambda u, v: L - 2.8 <= u <= L + 1.8 and abs(v) <= hw + 1.2)
-    S.blob(handle, WOOD, WOOD_OUT, lx=0.6, ly=0.6)
-    S.blob(head, STEEL, STEEL_OUT, lx=0.65, ly=0.65, cuts=(-0.4, 0.15, 0.6))
-    S.blob(collar, STEEL[1:], STEEL_OUT, lx=0.6, ly=0.6, cuts=(-0.2, 0.4))
-    for (x, y) in head - edge(head):
-        u, v = frame(x, y)
-        if u - hc(v) > 0.5 and abs(v) < half - 2.5:
-            S.set(x, y, STEEL[0])
-    return handle
+MIT = [hexc("#ff9a86"), hexc("#e8524a"), hexc("#b8383c"), hexc("#8a2630")]
+MIT_OUT = hexc("#5e1c24")
+CUFF = [hexc("#fffbea"), hexc("#f2e2c0"), hexc("#c2a67c")]
 
 
 # puffy climbing jacket
@@ -122,14 +89,26 @@ for x in (29, 35):
 blush(S, 21, 35)
 blush(S, 41, 35)
 
-# pickaxe handle stuck in her mouth, being chewed, head poking out to the right
-handle = pickaxe(S, (28, 44.5), (56, 39), half=11, bend=3.5, thick=3.4, hw=1.4)
-for (x, y) in ((28, 43), (29, 43), (28, 45)):   # bite marks
-    S.set(x, y, WOOD_OUT)
-for x in range(27, 37):   # lips over the handle
-    if (x, 44) not in handle:
-        S.set(x, 44, MOUTH)
+# a mitten dangling from her mouth by its cuff, upside down, with a bite out of the bottom
+hand = rect(30, 46, 9, 5) | {(x, y) for (x, y) in ellipse(34.0, 50.5, 4.5, 5.5) if y >= 51}
+thumb = ellipse(40.6, 49.4, 2.2, 3.2) | {(39, 47), (39, 48)}
+hand -= ellipse(30.5, 55.5, 2.4, 2.4)   # the bite
+S.blob(hand | thumb, MIT, MIT_OUT, cuts=(-0.5, 0.25, 0.7))
+for y in range(49, 53):   # the gap between thumb and hand
+    S.set(39, y, MIT_OUT)
+for (x, y) in ((32, 47), (31, 48)):
+    S.set(x, y, MIT[0])
+for x in range(31, 39):   # the cream knit stripe, as on the good's icon
+    S.set(x, 50, CUFF[0] if x < 33 else CUFF[1])
+    S.set(x, 51, CUFF[1] if x % 2 else MIT[1])
+cuff = rect(30, 42, 10, 5)
+S.blob(cuff, CUFF, MIT_OUT, cuts=(-0.4, 0.5))
+for x in range(31, 39, 2):
+    S.set(x, 45, CUFF[2])
+for x in range(27, 30):   # lips either side of the cuff
+    S.set(x, 44, MOUTH)
+S.set(40, 44, MOUTH)
 S.set(26, 43, MOUTH)
-S.set(37, 43, MOUTH)
+S.set(41, 43, MOUTH)
 
 finish(S, "scramble")

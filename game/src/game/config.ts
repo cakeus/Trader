@@ -23,9 +23,12 @@ export const CONFIG = {
   deckSize: 10,
   /** A seller's base daily stock by its good's category: [min, max], rolled evenly (stock deals
    *  add on top). */
-  stockRange: { food: [3, 3], treasure: [2, 3], music: [1, 3], tools: [1, 1] } as Record<string, [number, number]>,
-  /** Each quota is this many times the previous one (2 = doubling), rounded to $5. */
-  quotaGrowth: 1.75,
+  stockRange: { food: [3, 3], treasure: [2, 3], music: [1, 3], clothing: [1, 1] } as Record<string, [number, number]>,
+  /** Each week's quota, in order (one per 7 days; the last is due on the run's last day). Cash is
+   *  reset to the area's starting cash after each one, so each is met from that. */
+  quotas: [25, 30, 35, 60, 70, 80, 150, 190, 250],
+  /** A met quota pays one bonus star for each of these it's beaten by (0.1 = 10% over). */
+  bonusSteps: [0.1, 0.25, 0.5],
   /** The star Dealer. */
   dealer: {
     /** Chance he shows up on a given day, after his guaranteed first visit. */
@@ -33,26 +36,27 @@ export const CONFIG = {
     /** Distinct deals offered per visit. */
     offers: 3,
     /** Deal kinds he doesn't offer for now (stamps already owned keep working). */
-    disabled: ['discount', 'discountAll', 'buyerStock', 'buyerStockAll'] as DealerDeal['kind'][],
+    disabled: ['discount', 'discountAll', 'buyerStock', 'buyerStockAll','lastCall'] as DealerDeal['kind'][],
     /** His first visit after each met quota has at least one deal costing this many stars or fewer. */
     cheapAfterQuota: 5,
     /** Star cost per deal kind, the same for every rank (bag deals use bagCosts). Every deal can be
      *  bought once per run. */
     cost: {
-      bag: 3, discount: 3, luck: 3, stock: 3, buyerStock: 3,
-      discountAll: 6, stockAll: 6, buyerStockAll: 6, luckAll: 6, tip: 6,
+      bag: 3, discount: 3, luck: 3, stock: 2, buyerStock: 3, sellBonus: 1,
+      discountAll: 6, stockAll: 6, buyerStockAll: 6, luckAll: 6, tip: 7,
       dailyDiscount: 8, cantGetEnough: 8, collector: 8,
-      birdsEye: 8, haggler: 8, fannyPack: 8, packedHouse: 8, cramazing: 8, mixedBag: 8, lastCall: 8,
-      bigTipper: 8, fuzzyDice: 8, sleepingBag: 8, campFire: 8, monocle: 8, detour: 8, vintage: 8,
-      cleanSweep: 8, flipper: 8, perfectPlanner: 8, dumpTruck: 8,
+      birdsEye: 8, haggler: 8, fannyPack: 7, packedHouse: 8, cramazing: 9, mixedBag: 8, lastCall: 8,
+      bigTipper: 6, fuzzyDice: 8, sleepingBag: 8, campFire: 8, monocle: 8, detour: 10, vintage: 8,
+      cleanSweep: 8, flipper: 8, perfectPlanner: 6, dumpTruck: 8, nestEgg: 5, goldenGoose: 8,
     } as Record<DealerDeal['kind'], number>,
     /** Each kind's rarity (unlisted kinds are common). Each rarity has its own stamp deck. */
     rarity: {
-      dailyDiscount: 'rare', cantGetEnough: 'rare', collector: 'rare',
+      luckAll: 'rare', stockAll: 'rare', 
+      dailyDiscount: 'rare', cantGetEnough: 'rare', collector: 'rare',tip: 'rare',
       birdsEye: 'rare', haggler: 'rare', fannyPack: 'rare', packedHouse: 'rare', cramazing: 'rare',
       mixedBag: 'rare', lastCall: 'rare', bigTipper: 'rare', fuzzyDice: 'rare', sleepingBag: 'rare',
       campFire: 'rare', monocle: 'rare', detour: 'rare', vintage: 'rare', cleanSweep: 'rare',
-      flipper: 'rare', perfectPlanner: 'rare', dumpTruck: 'rare',
+      flipper: 'rare', perfectPlanner: 'rare', dumpTruck: 'rare', goldenGoose: 'rare',
     } as Partial<Record<DealerDeal['kind'], Rarity>>,
     /** Chance each stamp he draws is epic or rare: `base` in week 2 (the first week he comes), plus
      *  `perWeek` for every week after. The rest are common. */
@@ -70,7 +74,12 @@ export const CONFIG = {
      *  (taking both from good). */
     luckStep: 0.05,
     /** A stock deal adds this (by category) to the daily stock of every seller of its good. */
-    stockStep: { food: 3, treasure: 2, music: 2, tools: 1 } as Record<string, number>,
+    stockStep: { food: 3, treasure: 2, music: 2, clothing: 1 } as Record<string, number>,
+    /** A sellBonus deal adds this $ (by category) to every buyer's price for its good (the same in
+     *  every area). */
+    sellBonus: { food: 1, treasure: 1, music: 2, clothing: 3 } as Record<string, number>,
+    /** The sellBonus deals' titles, by category. */
+    sellBonusNames: { food: 'Foodie', treasure: 'Treasure Hunter', music: 'Music Lover', clothing: 'Fashionista' } as Record<string, string>,
     /** A buyerStock deal adds this to the daily demand of every buyer of its good. */
     buyerStockStep: 2,
     /** The all-goods deals, per rank: $ off every seller and extra demand for every buyer. They
@@ -115,5 +124,7 @@ export const CONFIG = {
     flipper: 1,
     /** Cramazing: an Amazing deal's difference from the Good price is multiplied by this. */
     cramazing: 1.5,
+    /** Nest Egg: $ added to the starting cash every week. */
+    nestEgg: 10,
   },
 };

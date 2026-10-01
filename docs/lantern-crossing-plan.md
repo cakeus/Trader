@@ -21,11 +21,11 @@ A third area after Frostpine Peaks: a Japanese city market district at night, mo
 | Category | Bay | Peaks | Crossing (id) | Blurb |
 |---|---|---|---|---|
 | Food | Strawberry | Hot Cocoa | **Sushi Roll** (`sushi_roll`) | "Rice, fish, and a little seaweed jacket. Eat it before the conveyor belt takes it back." |
-| Treasure | Seashell | Crystal | **Lucky Cat** (`lucky_cat`) | "Left paw up for customers, right paw up for money. This one's waving both." |
+| Treasure | Seashell | Crystal | **Capsule Toy** (`capsule_toy`) | "One turn of the crank and out rolls a tiny surprise. Never the one you wanted." |
 | Music | Old Record | Music Box | **Taiko Drum** (`taiko_drum`) | "Big, round, and loud enough to hear three stations away." |
-| Tools | Hammer | Pickaxe | **Paper Lantern** (`paper_lantern`) | "Paper, bamboo, and a little flame. Hang one out and the night comes to you." |
+| Clothing | Straw Hat | Wool Mittens | **Kimono** (`kimono`) | "Summer cotton in festival colors, tied with a bright obi." |
 
-The Lucky Cat is a gold maneki-neko (a calico is also traditional). The Paper Lantern is a chōchin: ribbed, round or cylindrical, red or cream, with dark top and bottom rings.
+The Capsule Toy is a gachapon capsule: a clear aqua top with a tiny yellow chick figure inside, and a coral bottom. (It was a Lucky Cat, a gold maneki-neko, until it became a capsule toy.) The Kimono is drawn flat like a summer yukata: indigo cotton with small blossoms, wide sleeves, a cream collar and a coral obi. The wearer's left panel goes over the right (right over left is only for the dead), so from the front the collar makes a "y". (The category was Tools, with a Paper Lantern, until it became Clothing; lanterns stay as the area's scenery.)
 
 ### Cast (16)
 
@@ -37,18 +37,18 @@ Same structure as the other casts: per good, 2 sellers and 2 buyers, and one str
 | `chef_omakase` | Chef Omakase | supplier | sushi_roll | unit_b3rry | A stern old heron | "Has run the same eight-seat counter for forty years. He chooses your sushi. He also chooses your seat." |
 | `kyu` | Kyu the Kappa | buyer | sushi_roll | sir_nibbleton | A kappa (river yokai) | "Only eats cucumber rolls. They're called kappa maki after him, and he will mention it." |
 | `hachi` | Hachi | buyer | sushi_roll | baker_bun | A shiba | "Meets the last train at Midnight Station every night, with a sushi roll for whoever gets off." |
-| `gacha_chan` | Gacha-chan | supplier | lucky_cat | captain_barnacle | A capsule-toy (gachapon) machine | "Turn his crank and out pops a lucky cat. Usually." |
-| `mochi` | Mochi | supplier | lucky_cat | shelly | A calico cat | "Poses as a lucky cat in shop windows for a living. Sells the competition on the side." |
-| `karasu` | Karasu | buyer | lucky_cat | madame_coquille | A salaryman crow | "Has missed the last train again. Collects lucky cats for his desk; it isn't working yet." |
-| `kirara` | Kirara | buyer | lucky_cat | pip | A hamster pop idol | "Keeps a lucky cat for every concert. She has had a lot of concerts." |
+| `gacha_chan` | Gacha-chan | supplier | capsule_toy | captain_barnacle | A capsule-toy (gachapon) machine | "Turn his crank and out pops a capsule. What's inside is between him and the crank." |
+| `mochi` | Mochi | supplier | capsule_toy | shelly | A calico cat | "Poses as a lucky cat in shop windows. Hands out capsules to anyone who stops to look." |
+| `karasu` | Karasu | buyer | capsule_toy | madame_coquille | A salaryman crow | "Has missed the last train again. Collects capsule toys for his desk; the whole set is just one more turn away." |
+| `kirara` | Kirara | buyer | capsule_toy | pip | A hamster pop idol | "Keeps a capsule toy from every concert. She has had a lot of concerts." |
 | `goro` | Goro | supplier | taiko_drum | vinyl_vince | A little thunder imp (Kaminari-sama) | "Drums up the summer storms and sells last season's drums. Accepts belly buttons as a tip." |
 | `kabuto` | Kabuto | supplier | taiko_drum | grandpa_gramophone | A rhinoceros beetle | "Carves every drum from a single log, mostly with his horn." |
 | `kenji` | Kenji the Kaiju | buyer | taiko_drum | gloop | A kaiju | "In from the bay for the night. Keeps trying to play the drums gently. Keeps flattening them." |
 | `ponpoko` | Ponpoko | buyer | taiko_drum | dj_mothball | A tanuki | "Has drummed on his own belly for years. Would like to try something that doesn't hurt." |
-| `old_chochin` | Old Chochin | supplier | paper_lantern | walter | A lantern yokai (chōchin-obake) | "A paper lantern that came to life on its hundredth birthday. Swears the ones he sells are just lanterns." |
-| `orika` | Orika | supplier | paper_lantern | mrs_tinkerbottom | An origami crane | "Folds lanterns between flights. The paper keeps trying to become more cranes." |
-| `tsuki` | Tsuki | buyer | paper_lantern | bramble | The moon rabbit | "Comes down for moon viewing at Stargazer's Lookout. Needs a lantern to find the way back up." |
-| `taisho` | Taisho | buyer | paper_lantern | gnorman | A boar who runs an izakaya | "A red lantern out front means 'we're open.' He is very, very open." |
+| `old_chochin` | Old Chochin | supplier | kimono | walter | A lantern yokai (chōchin-obake) | "A paper lantern that came to life on its hundredth birthday. Keeps the stall lit so you can see the patterns." |
+| `orika` | Orika | supplier | kimono | mrs_tinkerbottom | An origami crane, after the weaving crane of *Tsuru no Ongaeshi* | "Weaves cloth behind a closed door. Please don't peek." |
+| `tsuki` | Tsuki | buyer | kimono | bramble | The moon rabbit | "Comes down for moon viewing at Stargazer's Lookout. Wants something nice to wear for it." |
+| `taisho` | Taisho | buyer | kimono | gnorman | A boar who runs an izakaya | "Closes the izakaya once a year for the fireworks, and wants to look sharp." |
 
 **The font has no macrons** (only ASCII), so in-game names are "Old Chochin" and "Taisho". Don't add a glyph just for this.
 
@@ -72,7 +72,7 @@ Same structure as the other casts: per good, 2 sellers and 2 buyers, and one str
 - Portraits: no slanted-eye caricatures, no costume shorthand, not everyone in a kimono.
 - Leave out sacred and funerary items (Obon floating lanterns, shrine amulets). A torii may appear in the background of the city but isn't a landmark.
 - Names are plain words used for their meaning. No jokes on how Japanese sounds.
-- Before the art is final, the user plans to have someone with Japanese roots review the portraits and names.
+- Before the art is final, the user plans to have someone with Japanese roots review the portraits and names. Include the Kimono icon (the left-over-right collar) and Orika as the weaving crane.
 
 ## Art direction
 
@@ -84,7 +84,7 @@ Same structure as the other casts: per good, 2 sellers and 2 buyers, and one str
 
 ### 1. Goods art
 
-- `art/make_sushi_roll.py`, `make_lucky_cat.py`, `make_taiko_drum.py`, `make_paper_lantern.py`: 32×32 icons in `assets/goods/`.
+- `art/make_sushi_roll.py`, `make_capsule_toy.py`, `make_taiko_drum.py`, `make_kimono.py`: 32×32 icons in `assets/goods/`.
 - Add each to `make_icons16.py` (16×16) and `make_icons8.py` (8×8). Each needs a clear silhouette at 8px: a round roll with a dark nori ring and a light center, the cat with its raised paw, a barrel drum (sticks optional), a ribbed lantern with dark rings.
 - Check the contact sheets (`art/previews/_icons16_sheet.png`, `_icons8_sheet.png`).
 
@@ -108,7 +108,7 @@ Same structure as the other casts: per good, 2 sellers and 2 buyers, and one str
 
 **Timing (decided):** `fromDay: 43`. Each area lasts 21 days: the bay is days 1–21, the peaks 22–42, and Lantern Crossing 43–63. You get there by meeting the day-42 quota.
 
-**Prices (starting point, to confirm with the user and the sim):** **4× the bay prices** on every tier. The peaks are 2×, and `CLAUDE.md` says a third area needs richer prices again to keep up with the quotas. For example, Sushi Roll sellers 12 / 8 / 4, buyers 8 / 12 / 16 / 20; Paper Lantern sellers 40 / 36 / 28, buyers 32 / 40 / 48 / 52.
+**Prices (starting point, to confirm with the user and the sim):** **4× the bay prices** on every tier. The peaks are 2×, and `CLAUDE.md` says a third area needs richer prices again to keep up with the quotas. For example, Sushi Roll sellers 12 / 8 / 4, buyers 8 / 12 / 16 / 20; Kimono sellers 40 / 36 / 28, buyers 32 / 40 / 48 / 52.
 
 ### 5. Code
 

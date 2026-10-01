@@ -5,11 +5,10 @@ import { CONFIG } from '../game/config';
 import { todayEvent, weatherOn } from '../game/events';
 import { owns } from '../game/dealer';
 import {
-  actorsAt, avgPaid, buyBlock, buyDiscountStamp, flipperBonus, buyoutOffer, buyPrice, canAct, canDetour, demandApplies, detour, endDay, endOfDayPayouts,
+  actorsAt, avgPaid, buyBlock, buyDiscountStamp, flipperBonus, betterSales, buyPrice, cashOutValue, canAct, canDetour, demandApplies, detour, endDay, endOfDayPayouts,
   fullBuyPrice, hagglerMultiplier, nextSellPrice, offer, payoutTotal, sellBlock, sellBonus,
 } from '../game/run';
 import type { Quota, Role, Tier } from '../game/types';
-import { BuyoutDialog } from './buyout';
 import { DealerDialog } from './dealer';
 import { Confirm, drawBackground, drawBag, drawHud, drawPortrait, drawWeather, HUD_H } from './common';
 import { GameOver } from './gameOver';
@@ -111,6 +110,8 @@ export class LocationScene implements Scene {
     if (ui.button(endBtn, detouring ? 'Detour' : 'End Day', { scale: 2 })) {
       if (detouring) this.detour();
       else this.tryEndDay();
+      // the day ended (or the run did, clearing app.run): this scene is gone, so stop drawing it
+      if (app.scenes[0] !== this) return;
     }
     if (ui.hover(endBtn)) this.endDayTooltip(ui, detouring);
     drawHud(app, ui);
@@ -194,9 +195,14 @@ export class LocationScene implements Scene {
       if (!seller && owns(run, { kind: 'cantGetEnough' })) lines.push({ text: `+$${CONFIG.dealer.cantGetEnoughStep} after each sale`, color: C.cyan });
       if (!seller && owns(run, { kind: 'tip' })) {
         const { tip, tipAfter } = CONFIG.dealer;
-        const more = tipAfter - (o.sold ?? 0);
-        const text = o.tipped ? `Tipped $${tip} today` : `Tip: +$${tip} after ${more} more sold`;
-        lines.push({ text, color: o.tipped ? C.muted : C.cyan });
+        if (o.tipped) lines.push({ text: `Tipped $${tip} today`, color: C.muted });
+        else {
+          // only when the bag (and the buyer's demand, if capped) can still earn today's tip
+          const more = tipAfter - (o.sold ?? 0);
+          const held = run.inventory.filter((it) => it.good === g.good).length;
+          const canTake = demandApplies(o) ? o.left : Infinity;
+          if (Math.min(held, canTake) >= more) lines.push({ text: `Tip: +$${tip} after ${more} more sold`, color: C.cyan });
+        }
       }
       const avg = seller ? null : avgPaid(run, g.good);
       if (avg !== null) {
@@ -239,6 +245,9 @@ export class LocationScene implements Scene {
       if (p.sleepingBag) lines.push({ text: `Sleeping Bag: +$${p.sleepingBag}`, color: C.greenLight });
       if (p.cleanSweep) lines.push({ text: `Clean Sweep: +$${p.cleanSweep}`, color: C.greenLight });
       if (lines.length > 1) lines.push({ text: `Total tonight: +$${payoutTotal(p)}`, color: C.gold });
+      if (run.day >= run.quota.dueDay && run.inventory.length > 0) {
+        lines.push({ text: `End of the week: bag cashed out for +$${cashOutValue(this.app.data, run)}`, color: C.gold });
+      }
     }
     if (lines.length === 0) return;
     const w = 16 + Math.max(...lines.map((l) => ui.font.measure(l.text)));
@@ -257,12 +266,13 @@ export class LocationScene implements Scene {
   private tryEndDay(): void {
     const { app } = this;
     const run = app.run!;
-    if (buyoutOffer(app.data, run) !== null) {
-      app.push(new BuyoutDialog(app, () => this.doEndDay()));
-    } else if (run.day >= run.quota.dueDay && !run.quota.met && run.cash + payoutTotal(endOfDayPayouts(run)) < run.quota.amount) {
-      const short = run.quota.amount - run.cash - payoutTotal(endOfDayPayouts(run));
+    const due = run.day >= run.quota.dueDay;
+    const better = due && run.visited ? betterSales(app.data, run, run.visited) : [];
+    if (better.length > 0) {
+      // the week ends tonight: warn about goods a buyer here pays more for than the cash-out
+      const list = better.map((b) => `${app.data.goods[b.good].name} ($${b.price}, not $${b.cashOut})`).join(', ');
       app.push(
-        new Confirm(app, 'Last day!', `The quota is due tonight and you're $${short} short. End the day anyway?`,
+        new Confirm(app, 'Sell first?', `Buyers here pay more than the cash-out for: ${list}. End the day anyway?`,
           'End Day', () => this.doEndDay()),
       );
     } else {

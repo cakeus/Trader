@@ -1,4 +1,4 @@
-"""Gnorman the Gnome: a garden-gnome handyman with a tall red pointy hat,
+"""Gnorman the Gnome: a garden gnome with a tall red pointy hat,
 a big fluffy white beard, a round nose and blue overalls."""
 from pixelkit import hexc, ellipse, edge, rect
 from portraitkit import new, poly, eye, blush, clip, finish, fuzz, GLINT

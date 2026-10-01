@@ -1,7 +1,7 @@
 """Orika: an origami crane folded from soft pink paper, all crisp flat facets,
-wings raised, a tiny dot eye and blush, with a little cream paper lantern
-dangling from her beak on a thread."""
-from pixelkit import hexc, ellipse, edge, rounded_rect
+wings raised, a tiny dot eye and blush, holding a length of the cloth she weaves (indigo
+with little blossoms, like the kimono) in her beak."""
+from pixelkit import hexc, ellipse, edge
 from portraitkit import new, poly, blush, finish, line, GLINT
 
 S = new()
@@ -10,10 +10,10 @@ P = [hexc("#fff0f2"), hexc("#ffd2da"), hexc("#f7a8b8"), hexc("#e07890"), hexc("#
 OUT = hexc("#6a2440")
 DOT = hexc("#fff8f8")
 EYE = hexc("#2a1a2e")
-THREAD = hexc("#8a5a4a")
-LANT = [hexc("#fff4d0"), hexc("#ffe8b0"), hexc("#f4cf86")]
-LA_OUT = hexc("#6a3a22")
-LRING = hexc("#a8332f")
+CLOTH = [hexc("#7d8fe0"), hexc("#4c5cb4"), hexc("#36448c"), hexc("#28336c")]
+CL_OUT = hexc("#161a3c")
+BLOSSOM = hexc("#ffb6c8")
+WHITE = hexc("#f4f0ff")
 
 
 def facet(points, c, drawn):
@@ -66,19 +66,19 @@ for (x, y) in ((10, 23), (11, 23), (10, 24), (11, 24)):
 S.set(10, 23, GLINT)
 blush(S, 13, 26)
 
-# a little paper lantern dangling from her beak
-S.fill(line(6, 39, 6, 45), THREAD)
-lant = rounded_rect(1, 46, 11, 11, 3)
-S.blob(lant, LANT, LA_OUT, cuts=(-0.2, 0.5))
-for x in range(3, 10):
-    S.set(x, 46, LRING)
-    S.set(x, 47, LRING)
-    S.set(x, 55, LRING)
-    S.set(x, 56, LRING)
-for y in (49, 51, 53):
-    for x in range(2, 11):
-        if (x, y) in lant and (x, y) not in edge(lant):
-            S.set(x, y, LANT[2])
-S.set(3, 49, GLINT)
+# a length of her woven cloth hanging from her beak, folded over at the top
+cloth = poly([(2, 38), (11, 38), (12, 58), (9, 60), (6, 58), (2, 60), (1, 58)])
+S.blob(cloth, CLOTH, CL_OUT, lx=0.9, ly=0.3, cuts=(-0.5, 0.25, 0.75))
+for x in range(2, 12):   # the fold at the top
+    if (x, 41) in cloth and (x, 41) not in edge(cloth):
+        S.set(x, 41, CLOTH[3])
+for (x, y) in ((5, 45), (9, 51), (4, 55)):   # blossoms
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        if (x + dx, y + dy) in cloth and (x + dx, y + dy) not in edge(cloth):
+            S.set(x + dx, y + dy, BLOSSOM)
+    S.set(x, y, WHITE)
+for (x, y) in ((9, 44), (7, 49), (3, 50), (8, 56)):
+    S.set(x, y, WHITE)
+S.set(3, 39, GLINT)
 
 finish(S, "orika")

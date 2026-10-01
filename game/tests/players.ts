@@ -11,7 +11,7 @@ import { areaView } from '../src/game/area';
 import { buyDealerDeal, dealCost, dealFromKey, dealGood, isUniversal, owns } from '../src/game/dealer';
 import { CONFIG } from '../src/game/config';
 import { eventOn } from '../src/game/events';
-import { dealPrice, sellerPrice, tierWeights } from '../src/game/economy';
+import { buyerBonus, dealPrice, sellerPrice, tierWeights } from '../src/game/economy';
 import { actorsAt, buy, buyPrice, countOf, freeSlots, fullBuyPrice, maxBuy, maxSell, nextSellPrice, offer, sell, visit } from '../src/game/run';
 import { type DealerDeal, type RunState, type SingleKind, TIERS } from '../src/game/types';
 import { loadTestData } from './helpers';
@@ -26,7 +26,7 @@ export const SIM = {
 export const clone = (s: RunState): RunState => JSON.parse(JSON.stringify(s));
 
 /** Tier-weighted average price for an actor's good, after this run's perks: sellers
- *  apply the good's discount, both use the luck-boosted tier weights and Cramazing's Amazing
+ *  apply the good's discount, buyers its sellBonus, both use the luck-boosted tier weights and Cramazing's Amazing
  *  prices, and the Monocle raises both. */
 export function expectedPrice(s: RunState, actorId: string, good: string): number {
   const a = data.actors[actorId];
@@ -36,7 +36,7 @@ export function expectedPrice(s: RunState, actorId: string, good: string): numbe
   const monocle = owns(s, { kind: 'monocle' }) ? 1 + CONFIG.dealer.monocle : 1;
   return monocle * TIERS.filter((t) => w[t]).reduce((sum, t) => {
     const p = dealPrice(s, ag.prices, t);
-    return sum + w[t]! * (seller ? sellerPrice(data, s, good, p) : p);
+    return sum + w[t]! * (seller ? sellerPrice(data, s, good, p) : p + buyerBonus(data, s, good));
   }, 0);
 }
 
@@ -220,11 +220,11 @@ function focus(kind: SingleKind, name: string, about: string, extra: Partial<Pro
 
 /** Rough value of each deal kind for a player who wants them all (bag slots scale best). */
 const DEAL_VALUE: Record<DealerDeal['kind'], number> = {
-  bag: 5, luckAll: 4, discountAll: 4, stockAll: 3, buyerStockAll: 3, discount: 2, luck: 1.5, stock: 1,
+  bag: 5, luckAll: 4, discountAll: 4, stockAll: 3, buyerStockAll: 3, discount: 2, luck: 1.5, stock: 1, sellBonus: 2,
   buyerStock: 1, dailyDiscount: 3, tip: 3, cantGetEnough: 3, collector: 2,
   // the rares (the sims don't use Bird's Eye's or Detour's information, so they're worth little)
   monocle: 3, campFire: 3, mixedBag: 2.5, cramazing: 2, haggler: 2, fannyPack: 2, packedHouse: 2,
-  bigTipper: 2, fuzzyDice: 2, flipper: 2, perfectPlanner: 2, dumpTruck: 2, vintage: 1.5, lastCall: 1,
+  bigTipper: 2, fuzzyDice: 2, flipper: 2, perfectPlanner: 2, dumpTruck: 2, vintage: 1.5, lastCall: 1, nestEgg: 2, goldenGoose: 3,
   cleanSweep: 1, birdsEye: 0.5, sleepingBag: 0.5, detour: 0.5,
 };
 

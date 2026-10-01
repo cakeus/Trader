@@ -117,7 +117,7 @@ class DebugMenu extends SubMenu {
     let y = top;
     const q = run.quota;
     if (ui.button({ x, y, w, h: 26 }, q.met ? 'Mark Quota Incomplete' : 'Mark Quota Complete')) {
-      debugSetQuotaMet(run, !q.met);
+      debugSetQuotaMet(app.data, run, !q.met);
       app.save();
     }
     y += ROW;
@@ -157,7 +157,7 @@ class DebugMenu extends SubMenu {
     };
     adjust(`Cash $${run.cash}`, [5, 20], (n) => {
       run.cash = n === null ? 0 : run.cash + n;
-      updateQuota(run);
+      updateQuota(app.data, run);
       app.save();
     });
     adjust(`Stars ${run.stars}`, [1, 5], (n) => {

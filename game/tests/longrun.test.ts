@@ -5,7 +5,7 @@
  *
  *   npm run sim                         # defaults below
  *   RUNS=1000 DAYS=49 npm run sim       # more runs / longer horizon
- *   GROWTH=2,1.75,1.5 npm run sim       # compare quota growth factors
+ *   QUOTAS='20,25,30;20,30,40' npm run sim  # compare quota tables (';' between tables)
  *   DEALER=0.5 npm run sim              # Dealer visit chance per day
  *   DISABLED=discount npm run sim       # stamp kinds Nox won't offer (empty = all on)
  *   DECK=0 npm run sim                  # roll deal tiers independently instead of from the deck
@@ -13,22 +13,25 @@
  *   RAIN=0 npm run sim                  # profiles ignore the Rainstorm's buyer cap when buying
  *   FIREWORKS=0 DAYS=63 npm run sim     # turn Lantern Crossing's Fireworks Night off
  *   BLIZZARD=0 npm run sim              # turn Frostpine Peaks' Blizzard off
+ *   START=1.5 npm run sim               # multiply every area's starting cash (rounded)
  */
 import { describe, expect, it } from 'vitest';
 import { rngFor } from '../src/engine/rng';
 import { CONFIG } from '../src/game/config';
-import { endDay, newRun, QUOTA_DAYS, quotaFor, takeBuyout } from '../src/game/run';
+import { endDay, newRun, QUOTA_DAYS, quotaFor } from '../src/game/run';
 import type { DealerDeal } from '../src/game/types';
 import { data, forceStamp, PROFILES, type Profile, random, SIM, tradeAt } from './players';
 
 const env = (k: string) => (typeof process !== 'undefined' ? process.env[k] : undefined);
 const RUNS = Number(env('RUNS') ?? 500);
 const DAYS = Number(env('DAYS') ?? 35);
-const GROWTH = (env('GROWTH') ?? String(CONFIG.quotaGrowth)).split(',').map(Number);
+const QUOTA_SETS = (env('QUOTAS') ?? CONFIG.quotas.join(',')).split(';').map((t) => t.split(',').map(Number));
 const DEALER = Number(env('DEALER') ?? CONFIG.dealer.chance);
 const DECK = env('DECK') !== '0';
 if (env('BLIZZARD') === '0') data.areas.peaks.events = data.areas.peaks.events?.filter((e) => e.id !== 'blizzard');
 if (env('FIREWORKS') === '0') data.areas.crossing.events = data.areas.crossing.events?.filter((e) => e.id !== 'fireworks');
+const START = Number(env('START') ?? 1);
+if (START !== 1) for (const a of Object.values(data.areas)) a.startCash = Math.round(a.startCash * START);
 const DISABLED = (env('DISABLED')?.split(',').filter(Boolean) ?? CONFIG.dealer.disabled) as DealerDeal['kind'][];
 
 interface Summary {
@@ -79,7 +82,6 @@ function simulate(profile: Profile): Summary {
     while (s.day <= DAYS) {
       forceStamp(s, profile);
       tradeAt(s, profile.pick(s, () => r.next()), profile);
-      takeBuyout(data, s); // only offered on an unmet quota's due day, and turning it down fails the run
       if (!firstDay && s.quota.index === 0 && s.quota.met) firstDay = s.day;
       if (s.day === QUOTA_DAYS) sum.day7.push(s.cash);
       // the bag after the day's trading (before endDay, which empties it on an area move)
@@ -109,7 +111,7 @@ const RANDOM: Profile = { ...PROFILES.impulse, name: 'Random', about: 'Random lo
 describe('balance: long run', () => {
   it('reports survival after each quota for every profile (log only)', () => {
     const saved = {
-      growth: CONFIG.quotaGrowth, dealer: CONFIG.dealer.chance, disabled: CONFIG.dealer.disabled,
+      quotas: CONFIG.quotas, dealer: CONFIG.dealer.chance, disabled: CONFIG.dealer.disabled,
       deck: CONFIG.tierDeck,
     };
     CONFIG.tierDeck = DECK;
@@ -117,10 +119,10 @@ describe('balance: long run', () => {
     CONFIG.dealer.disabled = DISABLED;
     const avg = (n: number) => (n / RUNS).toFixed(1);
     const profiles = [...Object.values(PROFILES), RANDOM];
-    for (const g of GROWTH) {
-      CONFIG.quotaGrowth = g;
+    for (const g of QUOTA_SETS) {
+      CONFIG.quotas = g;
       const amounts = Array.from({ length: Math.floor(DAYS / QUOTA_DAYS) }, (_, i) => `$${quotaFor(i).amount}`);
-      console.log(`\nquota growth x${g}: ${amounts.join(', ')}  (${RUNS} runs, to day ${DAYS}, dealer ${DEALER * 100}%, tier deck ${DECK ? 'on' : 'off'}, stamps off: ${DISABLED.join(', ') || 'none'})`);
+      console.log(`\nquotas: ${amounts.join(', ')}  (${RUNS} runs, to day ${DAYS}, dealer ${DEALER * 100}%, tier deck ${DECK ? 'on' : 'off'}, stamps off: ${DISABLED.join(', ') || 'none'})`);
       console.log(
         'profile        | ' + amounts.map((_, q) => `day ${String(QUOTA_DAYS * (q + 1)).padEnd(3)}`).join(' | ') +
           ' | end day | avg cash | stars got/spent | deals/run: bag disc stock dem luck all',
@@ -188,7 +190,7 @@ ${what} after each day's trading, by week: avg (min–max), over the run-days pl
       }
     }
     CONFIG.tierDeck = saved.deck;
-    CONFIG.quotaGrowth = saved.growth;
+    CONFIG.quotas = saved.quotas;
     CONFIG.dealer.chance = saved.dealer;
     CONFIG.dealer.disabled = saved.disabled;
     expect(true).toBe(true);

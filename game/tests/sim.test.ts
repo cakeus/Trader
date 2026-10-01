@@ -1,10 +1,10 @@
 /**
- * Balance simulation for the first quota ($10 -> $20 by day 7).
+ * Balance simulation for the first quota ($15 -> $25 by day 7).
  * The players live in players.ts; the long-run sim is longrun.test.ts.
  */
 import { describe, expect, it } from 'vitest';
 import { rngFor } from '../src/engine/rng';
-import { endDay, newRun, takeBuyout } from '../src/game/run';
+import { endDay, newRun } from '../src/game/run';
 import type { RunState } from '../src/game/types';
 import { clone, data, type Policy, PROFILES, type Profile, random, sensible, tradeAt } from './players';
 
@@ -16,7 +16,6 @@ function playQuota1(seed: number, policy: Policy, profile?: Profile): { met: boo
   let metDay = 0;
   while (s.day <= 7) {
     tradeAt(s, policy(s, () => r.next()), profile);
-    takeBuyout(data, s);
     if (s.quota.met && !metDay) metDay = s.day;
     if (s.day === 7) break;
     endDay(data, s);
@@ -32,7 +31,6 @@ function oracle(seed: number): { met: boolean; best: number } {
     for (const l of locs) {
       const c = clone(s);
       tradeAt(c, l);
-      takeBuyout(data, c);
       if (c.quota.met) met = true;
       if (c.day === 7) {
         best = Math.max(best, c.cash);
@@ -83,6 +81,6 @@ describe('balance: first quota', () => {
     // target: hard but fair
     expect(oracleMet / SEEDS).toBeGreaterThanOrEqual(0.9);
     expect(randomMet).toBeLessThan(sensibleMet);
-    expect(randomMet / SEEDS).toBeLessThan(0.4); // about 33% at a $20 first quota
+    expect(randomMet / SEEDS).toBeLessThan(0.6); // about 49% at a $25 first quota from $15
   }, 30_000); // the oracle's full search takes ~5s, right at vitest's default limit
 });

@@ -1,5 +1,6 @@
 import type { App } from '../app';
 import { C, type Ui } from '../engine/ui';
+import { areaView } from '../game/area';
 import { dealGood, isUniversal, rarityOf } from '../game/dealer';
 import type { DealerDeal, Rarity } from '../game/types';
 
@@ -31,6 +32,8 @@ const DEAL_ICON: Partial<Record<DealerDeal['kind'], string>> = {
   flipper: 'icon_flip',
   perfectPlanner: 'icon_planner',
   dumpTruck: 'icon_truck',
+  nestEgg: 'icon_nest',
+  goldenGoose: 'icon_goose',
 };
 
 /** Stamp backgrounds by rarity. */
@@ -48,17 +51,17 @@ export const RARITY_LABEL: Record<Rarity, { text: string; dark: string; light: s
 };
 
 /** A deal drawn as a postage stamp (STAMP_SIZE square), framed by its rarity: the icon of its
- *  category's good in the run's area, a 2x2 grid of the area's goods for all-goods deals, or a
- *  UI icon. */
-export function drawStamp(app: App, ui: Ui, deal: DealerDeal, x: number, y: number): void {
+ *  category's good in `area` (the run's, by default), a 2x2 grid of the area's goods for all-goods
+ *  deals, or a UI icon. */
+export function drawStamp(app: App, ui: Ui, deal: DealerDeal, x: number, y: number, area = app.area): void {
   const all = isUniversal(deal);
   ui.image(`assets/ui/${FRAME[rarityOf(deal)]}.png`, x, y);
   const ix = x + 5;
   const iy = y + 5;
-  const good = dealGood(app.data, deal, app.area);
+  const good = dealGood(app.data, deal, area);
   if (good) ui.image(app.data.goods[good].icon, ix, iy);
   else if (all)
-    Object.values(app.view.goods).slice(0, 4).forEach((g, j) => {
+    Object.values(areaView(app.data, area).goods).slice(0, 4).forEach((g, j) => {
       ui.image(g.iconSmall, ix + 5 + (j % 2) * 13, iy + 5 + Math.floor(j / 2) * 13);
     });
   else ui.image(`assets/ui/${DEAL_ICON[deal.kind]!}.png`, ix + 8, iy + 8);

@@ -1,9 +1,7 @@
-"""Brunhilde: a badger blacksmith in a red polka-dot headscarf and a leather
-apron, a soot smudge on her cheek and a heavy pickaxe over her shoulder."""
-import math
-
+"""Brunhilde: a badger knitter in a red polka-dot headscarf and a leather apron, holding up
+a big ball of yarn with two knitting needles stuck through it."""
 from pixelkit import hexc, ellipse, edge, rect
-from portraitkit import new, poly, eye, blush, clip, finish, smile, GLINT
+from portraitkit import new, poly, line, eye, blush, clip, finish, smile, GLINT
 
 S = new()
 
@@ -19,49 +17,21 @@ SH_OUT = hexc("#16303e")
 APRON = [hexc("#d09a64"), hexc("#a8703e"), hexc("#86542c"), hexc("#663e20")]
 AP_OUT = hexc("#3a2010")
 RIVET = hexc("#ffd24a")
-SOOT = hexc("#8a8290")
 NOSE = hexc("#3a2a36")
-WOOD = [hexc("#f0c488"), hexc("#d0924e"), hexc("#a8683a"), hexc("#7e4a2a")]
-WOOD_OUT = hexc("#4a2a1c")
-STEEL = [hexc("#e4eef8"), hexc("#a8bcd4"), hexc("#7890b0"), hexc("#566a8c")]
-STEEL_OUT = hexc("#27304a")
-WRAP = [hexc("#8ab8c8"), hexc("#5a8aa0"), hexc("#3e6478")]
+YARN = [hexc("#e4d4ff"), hexc("#b49ae8"), hexc("#8a70c4"), hexc("#6a52a0")]
+YN_OUT = hexc("#2e2252")
+NEEDLE = [hexc("#f0c488"), hexc("#a8683a")]
+KNOB = hexc("#e8524a")
 
-
-def pickaxe(S, base, top, half=11.0, bend=4.0, thick=2.4, hw=1.4):
-    """A pickaxe like the good's icon: handle from base to top, curved head at top."""
-    L = math.hypot(top[0] - base[0], top[1] - base[1])
-    D = ((top[0] - base[0]) / L, (top[1] - base[1]) / L)
-    N = (-D[1], D[0])
-
-    def frame(x, y):
-        dx, dy = x + 0.5 - base[0], y + 0.5 - base[1]
-        return dx * D[0] + dy * D[1], dx * N[0] + dy * N[1]
-
-    def region(test):
-        return {(x, y) for y in range(64) for x in range(64) if test(*frame(x, y))}
-
-    def hc(v):
-        t = min(1.0, abs(v) / half)
-        return L - bend * t * t
-
-    handle = region(lambda u, v: 0 <= u <= L and abs(v) <= hw)
-    wrap = region(lambda u, v: 1 <= u <= 6 and abs(v) <= hw + 0.4)
-    head = region(lambda u, v: abs(v) <= half and
-                  abs(u - hc(v)) <= thick * (1 - min(1, abs(v) / half) ** 1.6) + 0.55)
-    collar = region(lambda u, v: L - 2.8 <= u <= L + 1.8 and abs(v) <= hw + 1.2)
-    S.blob(handle, WOOD, WOOD_OUT, lx=0.6, ly=0.6)
-    S.blob(wrap, WRAP, WOOD_OUT, lx=0.6, ly=0.6, cuts=(-0.2, 0.5))
-    S.blob(head, STEEL, STEEL_OUT, lx=0.65, ly=0.65, cuts=(-0.4, 0.15, 0.6))
-    S.blob(collar, STEEL[1:], STEEL_OUT, lx=0.6, ly=0.6, cuts=(-0.2, 0.4))
-    for (x, y) in head - edge(head):
-        u, v = frame(x, y)
-        if u - hc(v) > 0.5 and abs(v) < half - 2.5:
-            S.set(x, y, STEEL[0])
-
-
-# heavy pickaxe resting on her right shoulder, head up behind her
-pickaxe(S, (44, 63), (53, 9), half=14, bend=5, thick=3.0, hw=1.6)
+# two knitting needles crossing behind the yarn, up past her shoulder
+for (x0, y0, x1, y1) in ((48, 50, 55, 28), (54, 50, 60, 31)):
+    for p in line(x0, y0, x1, y1, width=2):
+        S.set(*p, NEEDLE[1])
+    for p in line(x0, y0, x1, y1):
+        S.set(*p, NEEDLE[0])
+    for (dx, dy) in ((-1, -1), (0, -1), (-1, 0), (0, 0)):
+        S.set(x1 + dx, y1 + dy - 1, KNOB)
+    S.set(x1 - 1, y1 - 2, hexc("#ff9a86"))
 
 # shirt shoulders with rolled sleeves, leather apron bib
 shirt = clip(ellipse(32, 64, 27, 14))
@@ -74,7 +44,19 @@ pocket = rect(27, 57, 11, 6)
 S.blob(pocket, APRON[1:], AP_OUT, cuts=(-0.2, 0.5))
 for (x, y) in ((22, 54), (42, 54), (28, 58), (36, 58)):
     S.set(x, y, RIVET)
-# her paw gripping the handle
+# a big ball of yarn held up in her paw, its strands wound round
+ball = ellipse(52, 45, 7, 6.5)
+S.blob(ball, YARN, YN_OUT, cuts=(-0.45, 0.2, 0.7))
+for (x, y) in ball - edge(ball):   # wound strands: arcs round a point off to the upper-left
+    d = ((x - 49) ** 2 + (y - 42) ** 2) ** 0.5
+    if 3.4 < d < 4.4 or 6.4 < d < 7.4:
+        S.set(x, y, YARN[2] if S.get(x, y) in (YARN[0], YARN[1]) else YARN[3])
+S.set(48, 41, GLINT)
+S.set(49, 40, YARN[0])
+# the loose end trailing down
+for (x, y) in ((45, 48), (44, 49), (44, 50), (43, 51)):
+    S.set(x, y, YARN[1])
+# her paw holding it
 paw = ellipse(46, 52, 4.4, 3.6)
 S.blob(paw, GREY, FC_OUT, cuts=(-0.3, 0.3, 0.75))
 for x in (44, 46, 48):   # knuckles
@@ -122,8 +104,5 @@ for ex in (26, 36):
     S.set(ex + 1, 33, GLINT)
 blush(S, 21, 39)
 blush(S, 42, 39)
-# soot smudge
-for (x, y) in ((40, 41), (41, 41), (42, 42), (40, 42)):
-    S.set(x, y, SOOT)
 
 finish(S, "brunhilde")

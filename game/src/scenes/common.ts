@@ -270,11 +270,11 @@ export function drawPortrait(ui: Ui, actor: Pick<ActorDef, 'portrait' | 'name'> 
 }
 
 /** Top bar: day, cash, bag, stars, quota, and the Stamps and Menu buttons (Esc also opens the menu).
- *  Also plays the "Last Day!" announcement once on an unmet quota's due day. */
+ *  Also plays the "Last Day!" announcement once on every quota's due day (met or not). */
 export function drawHud(app: App, ui: Ui): void {
   const run = app.run!;
   const key = `${run.seed}:${run.day}`;
-  if (run.day === run.quota.dueDay && !run.quota.met && app.announced !== key) {
+  if (run.day === run.quota.dueDay && app.announced !== key) {
     app.announced = key;
     ui.announce('Last Day!');
     app.sfx.play('lastDay');
@@ -296,14 +296,10 @@ export function drawHud(app: App, ui: Ui): void {
   const label = `Quota $${q.amount} by Day ${q.dueDay}`;
   ui.text(label, qx + 20, ty, C.cream);
   const sx = qx + 26 + ui.font.measure(label);
-  if (q.met) {
-    ui.image('assets/ui/icon_check.png', sx, 6);
-    ui.text('Met!', sx + 18, ty, C.greenLight);
-  } else {
-    const left = daysLeft(run);
-    const txt = left <= 0 ? 'due today!' : left === 1 ? '1 day left' : `${left} days left`;
-    ui.text(txt, sx, ty, left <= 1 ? C.redLight : C.muted);
-  }
+  // whether it's met is only revealed at the end of the week (the QuotaResult tally)
+  const left = daysLeft(run);
+  const txt = left <= 0 ? 'due today!' : left === 1 ? '1 day left' : `${left} days left`;
+  ui.text(txt, sx, ty, left <= 1 ? C.redLight : C.muted);
 
   if (ui.button({ x: W - 134, y: 5, w: 62, h: 20 }, 'Stamps')) {
     app.sfx.play('open');

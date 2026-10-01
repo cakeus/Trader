@@ -10,7 +10,7 @@ const data = loadTestData();
 function lastDay(seed: number): RunState {
   const s = newRun(data, seed);
   while (s.day < LAST_DAY) {
-    debugSetQuotaMet(s, true);
+    debugSetQuotaMet(data, s, true);
     debugAdvance(data, s);
   }
   return s;
@@ -27,15 +27,16 @@ describe('the end of the run', () => {
 
   it('wins the run when the last quota is met, and stops there', () => {
     const s = lastDay(3);
-    debugSetQuotaMet(s, true);
+    s.inventory = [{ good: 'sushi_roll', paid: 12, day: LAST_DAY }];
+    debugSetQuotaMet(data, s, true);
     const cash = s.cash;
-    const bag = s.inventory.length;
     expect(endDay(data, s)).toBe('won');
     expect(s.status).toBe('won');
     expect(s.stats.quotasMet).toBe(9);
     expect(s.day).toBe(LAST_DAY);
-    expect(s.cash).toBe(cash);
-    expect(s.inventory.length).toBe(bag);
+    // the bag is cashed out at cost, and the cash isn't reset: it's the score
+    expect(s.cash).toBe(cash + 12);
+    expect(s.inventory.length).toBe(0);
   });
 
   it('fails the run when the last quota is missed', () => {
@@ -47,7 +48,7 @@ describe('the end of the run', () => {
 
   it('stops the debug advance at a win', () => {
     const s = lastDay(5);
-    debugSetQuotaMet(s, true);
+    debugSetQuotaMet(data, s, true);
     debugAdvance(data, s);
     expect(s.status).toBe('won');
     expect(s.day).toBe(LAST_DAY);

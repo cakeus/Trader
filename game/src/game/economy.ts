@@ -56,11 +56,13 @@ export function tierPrice(prices: ActorGood['prices'], tier: Tier): number {
 }
 
 /** An actor good's price at a tier, with the Cramazing stamp: an Amazing deal's difference from
- *  the Good price is multiplied by CONFIG.dealer.cramazing (never below $1). */
+ *  the Good price is multiplied by CONFIG.dealer.cramazing, rounded in the player's favor (up for
+ *  buyers, down for sellers; never below $1). */
 export function dealPrice(state: RunState, prices: ActorGood['prices'], tier: Tier): number {
   const p = tierPrice(prices, tier);
   if (tier !== 'amazing' || !state.perks.owned.includes('cramazing')) return p;
-  return Math.max(1, prices.good + CONFIG.dealer.cramazing * (p - prices.good));
+  const gap = CONFIG.dealer.cramazing * (p - prices.good);
+  return Math.max(1, prices.good + Math.sign(gap) * Math.ceil(Math.abs(gap)));
 }
 
 /** A price at today's bustling location (Fireworks Night): buyers pay `buyBonus` more and sellers
@@ -71,13 +73,19 @@ export function bustlePrice(data: GameData, state: RunState, role: Role, price: 
   return role === 'buyer' ? Math.round(price * (1 + b.buyBonus)) : Math.max(1, Math.round(price * (1 - b.sellDiscount)));
 }
 
+/** The $ a buyer of `good` pays extra from its category's sellBonus stamp (Foodie and co.). */
+export function buyerBonus(data: GameData, state: RunState, good: string): number {
+  const category = categoryOf(data, good);
+  return state.perks.owned.includes(`sellBonus:${category}`) ? CONFIG.dealer.sellBonus[category] ?? 0 : 0;
+}
+
 /** An offer's base price (`Offer.price`) at a tier: the tier price with Cramazing, then a seller's
- *  discounts, then the bustling change if it's at the bustling location. */
+ *  discounts or a buyer's sellBonus, then the bustling change if it's at the bustling location. */
 export function offerPrice(
   data: GameData, state: RunState, good: string, role: Role, prices: ActorGood['prices'], tier: Tier, bustling = false,
 ): number {
   const base = dealPrice(state, prices, tier);
-  const p = role === 'supplier' ? sellerPrice(data, state, good, base) : base;
+  const p = role === 'supplier' ? sellerPrice(data, state, good, base) : base + buyerBonus(data, state, good);
   return bustling ? bustlePrice(data, state, role, p) : p;
 }
 

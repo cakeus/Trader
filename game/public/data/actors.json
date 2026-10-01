@@ -64,24 +64,24 @@
 
   { "id": "walter", "name": "Walter the Walrus", "role": "supplier",
     "portrait": "assets/actors/walter.png",
-    "blurb": "A retired shipwright with more hammers than boats.",
+    "blurb": "A retired sailor who weaves straw hats on the dock. Has more hats than heads.",
     "goods": [
-      {"good": "hammer", "prices": {"good": 10, "great": 9, "amazing": 7}, "qtyMin": 1, "qtyMax": 3} ] },
+      {"good": "straw_hat", "prices": {"good": 10, "great": 9, "amazing": 7}, "qtyMin": 1, "qtyMax": 3} ] },
   { "id": "mrs_tinkerbottom", "name": "Mrs. Tinkerbottom", "role": "supplier",
     "portrait": "assets/actors/mrs_tinkerbottom.png",
-    "blurb": "A mouse tinkerer. Builds a new tool every morning and forgets why by noon.",
+    "blurb": "A mouse milliner. Tinkers with a new brim every morning and forgets why by noon.",
     "goods": [
-      {"good": "hammer", "prices": {"good": 10, "great": 9, "amazing": 7}, "qtyMin": 1, "qtyMax": 2} ] },
+      {"good": "straw_hat", "prices": {"good": 10, "great": 9, "amazing": 7}, "qtyMin": 1, "qtyMax": 2} ] },
   { "id": "bramble", "name": "Bramble the Beaver", "role": "buyer",
     "portrait": "assets/actors/bramble.png",
-    "blurb": "A carpenter beaver. Chews through a hammer a week, somehow.",
+    "blurb": "A carpenter beaver. Chews through a hat brim a week, somehow.",
     "goods": [
-      {"good": "hammer", "prices": {"bad": 8, "good": 10, "great": 12, "amazing": 13}, "qtyMin": 1, "qtyMax": 3} ] },
+      {"good": "straw_hat", "prices": {"bad": 8, "good": 10, "great": 12, "amazing": 13}, "qtyMin": 1, "qtyMax": 3} ] },
   { "id": "gnorman", "name": "Gnorman the Gnome", "role": "buyer",
     "portrait": "assets/actors/gnorman.png",
-    "blurb": "A handyman gnome. Fixes everything in the garden except his own hat.",
+    "blurb": "A garden gnome. Would like a hat that isn't pointy, just once.",
     "goods": [
-      {"good": "hammer", "prices": {"bad": 8, "good": 10, "great": 12, "amazing": 13}, "qtyMin": 1, "qtyMax": 2} ] },
+      {"good": "straw_hat", "prices": {"bad": 8, "good": 10, "great": 12, "amazing": 13}, "qtyMin": 1, "qtyMax": 2} ] },
 
   { "id": "mama_mugsworth", "name": "Mama Mugsworth", "role": "supplier",
     "portrait": "assets/actors/mama_mugsworth.png",
@@ -148,24 +148,24 @@
 
   { "id": "brunhilde", "name": "Brunhilde", "role": "supplier",
     "portrait": "assets/actors/brunhilde.png",
-    "blurb": "A badger blacksmith. Her pickaxes are so heavy only she can test them.",
+    "blurb": "A badger knitter. Her mittens are so thick only she can bend the thumbs.",
     "goods": [
-      {"good": "pickaxe", "prices": {"good": 20, "great": 18, "amazing": 14}, "qtyMin": 1, "qtyMax": 3} ] },
+      {"good": "wool_mittens", "prices": {"good": 20, "great": 18, "amazing": 14}, "qtyMin": 1, "qtyMax": 3} ] },
   { "id": "tollbert", "name": "Tollbert", "role": "supplier",
     "portrait": "assets/actors/tollbert.png",
-    "blurb": "A bridge troll. Charges one pickaxe to cross. Now has far too many.",
+    "blurb": "A bridge troll. Charges one mitten to cross. Now has far too many, and none match.",
     "goods": [
-      {"good": "pickaxe", "prices": {"good": 20, "great": 18, "amazing": 14}, "qtyMin": 1, "qtyMax": 2} ] },
+      {"good": "wool_mittens", "prices": {"good": 20, "great": 18, "amazing": 14}, "qtyMin": 1, "qtyMax": 2} ] },
   { "id": "marmaduke", "name": "Foreman Marmaduke", "role": "buyer",
     "portrait": "assets/actors/marmaduke.png",
-    "blurb": "A marmot mine boss. His crew loses a pickaxe in every snowdrift.",
+    "blurb": "A marmot mine boss. His crew loses a mitten in every snowdrift.",
     "goods": [
-      {"good": "pickaxe", "prices": {"bad": 16, "good": 20, "great": 24, "amazing": 26}, "qtyMin": 1, "qtyMax": 3} ] },
+      {"good": "wool_mittens", "prices": {"bad": 16, "good": 20, "great": 24, "amazing": 26}, "qtyMin": 1, "qtyMax": 3} ] },
   { "id": "scramble", "name": "Scramble", "role": "buyer",
     "portrait": "assets/actors/scramble.png",
-    "blurb": "A mountain goat ice-climber. Goes up with two pickaxes, eats one on the way down.",
+    "blurb": "A mountain goat ice-climber. Goes up in two mittens, eats one on the way down.",
     "goods": [
-      {"good": "pickaxe", "prices": {"bad": 16, "good": 20, "great": 24, "amazing": 26}, "qtyMin": 1, "qtyMax": 2} ] },
+      {"good": "wool_mittens", "prices": {"bad": 16, "good": 20, "great": 24, "amazing": 26}, "qtyMin": 1, "qtyMax": 2} ] },
 
   { "id": "mister_kaiten", "name": "Mister Kaiten", "role": "supplier",
     "portrait": "assets/actors/mister_kaiten.png",
@@ -190,24 +190,24 @@
 
   { "id": "gacha_chan", "name": "Gacha-chan", "role": "supplier",
     "portrait": "assets/actors/gacha_chan.png",
-    "blurb": "Turn his crank and out pops a lucky cat. Usually.",
+    "blurb": "Turn his crank and out pops a capsule. What's inside is between him and the crank.",
     "goods": [
-      {"good": "lucky_cat", "prices": {"good": 16, "great": 12, "amazing": 8}, "qtyMin": 2, "qtyMax": 4} ] },
+      {"good": "capsule_toy", "prices": {"good": 16, "great": 12, "amazing": 8}, "qtyMin": 2, "qtyMax": 4} ] },
   { "id": "mochi", "name": "Mochi", "role": "supplier",
     "portrait": "assets/actors/mochi.png",
-    "blurb": "Poses as a lucky cat in shop windows for a living. Sells the competition on the side.",
+    "blurb": "Poses as a lucky cat in shop windows. Hands out capsules to anyone who stops to look.",
     "goods": [
-      {"good": "lucky_cat", "prices": {"good": 16, "great": 12, "amazing": 8}, "qtyMin": 1, "qtyMax": 3} ] },
+      {"good": "capsule_toy", "prices": {"good": 16, "great": 12, "amazing": 8}, "qtyMin": 1, "qtyMax": 3} ] },
   { "id": "karasu", "name": "Karasu", "role": "buyer",
     "portrait": "assets/actors/karasu.png",
-    "blurb": "Has missed the last train again. Collects lucky cats for his desk; it isn't working yet.",
+    "blurb": "Has missed the last train again. Collects capsule toys for his desk; the whole set is just one more turn away.",
     "goods": [
-      {"good": "lucky_cat", "prices": {"bad": 8, "good": 16, "great": 20, "amazing": 24}, "qtyMin": 2, "qtyMax": 3} ] },
+      {"good": "capsule_toy", "prices": {"bad": 8, "good": 16, "great": 20, "amazing": 24}, "qtyMin": 2, "qtyMax": 3} ] },
   { "id": "kirara", "name": "Kirara", "role": "buyer",
     "portrait": "assets/actors/kirara.png",
-    "blurb": "Keeps a lucky cat for every concert. She has had a lot of concerts.",
+    "blurb": "Keeps a capsule toy from every concert. She has had a lot of concerts.",
     "goods": [
-      {"good": "lucky_cat", "prices": {"bad": 8, "good": 16, "great": 20, "amazing": 24}, "qtyMin": 1, "qtyMax": 3} ] },
+      {"good": "capsule_toy", "prices": {"bad": 8, "good": 16, "great": 20, "amazing": 24}, "qtyMin": 1, "qtyMax": 3} ] },
 
   { "id": "goro", "name": "Goro", "role": "supplier",
     "portrait": "assets/actors/goro.png",
@@ -232,22 +232,22 @@
 
   { "id": "old_chochin", "name": "Old Chochin", "role": "supplier",
     "portrait": "assets/actors/old_chochin.png",
-    "blurb": "A paper lantern that came to life on its hundredth birthday. Swears the ones he sells are just lanterns.",
+    "blurb": "A paper lantern that came to life on its hundredth birthday. Keeps the stall lit so you can see the patterns.",
     "goods": [
-      {"good": "paper_lantern", "prices": {"good": 40, "great": 36, "amazing": 28}, "qtyMin": 1, "qtyMax": 3} ] },
+      {"good": "kimono", "prices": {"good": 40, "great": 36, "amazing": 28}, "qtyMin": 1, "qtyMax": 3} ] },
   { "id": "orika", "name": "Orika", "role": "supplier",
     "portrait": "assets/actors/orika.png",
-    "blurb": "Folds lanterns between flights. The paper keeps trying to become more cranes.",
+    "blurb": "Weaves cloth behind a closed door. Please don't peek.",
     "goods": [
-      {"good": "paper_lantern", "prices": {"good": 40, "great": 36, "amazing": 28}, "qtyMin": 1, "qtyMax": 2} ] },
+      {"good": "kimono", "prices": {"good": 40, "great": 36, "amazing": 28}, "qtyMin": 1, "qtyMax": 2} ] },
   { "id": "tsuki", "name": "Tsuki", "role": "buyer",
     "portrait": "assets/actors/tsuki.png",
-    "blurb": "Comes down for moon viewing at Stargazer's Lookout. Needs a lantern to find the way back up.",
+    "blurb": "Comes down for moon viewing at Stargazer's Lookout. Wants something nice to wear for it.",
     "goods": [
-      {"good": "paper_lantern", "prices": {"bad": 32, "good": 40, "great": 48, "amazing": 52}, "qtyMin": 1, "qtyMax": 3} ] },
+      {"good": "kimono", "prices": {"bad": 32, "good": 40, "great": 48, "amazing": 52}, "qtyMin": 1, "qtyMax": 3} ] },
   { "id": "taisho", "name": "Taisho", "role": "buyer",
     "portrait": "assets/actors/taisho.png",
-    "blurb": "A red lantern out front means 'we're open.' He is very, very open.",
+    "blurb": "Closes the izakaya once a year for the fireworks, and wants to look sharp.",
     "goods": [
-      {"good": "paper_lantern", "prices": {"bad": 32, "good": 40, "great": 48, "amazing": 52}, "qtyMin": 1, "qtyMax": 2} ] }
+      {"good": "kimono", "prices": {"bad": 32, "good": 40, "great": 48, "amazing": 52}, "qtyMin": 1, "qtyMax": 2} ] }
 ]

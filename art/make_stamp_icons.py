@@ -315,10 +315,27 @@ def truck(S):
         S.set(cx, 12, hexc("#b8b0c0"))
 
 
+def goose(S):
+    """Golden Goose: a shining golden egg with sparkles."""
+    egg = ellipse(7.5, 8.5, 4.6, 6.0)
+    S.blob(egg, GOLD, GOLD_O, cuts=(-0.4, 0.2, 0.6))
+    S.set(5, 5, GLINT)
+    S.set(5, 6, GLINT)
+    S.set(6, 4, GLINT)
+    # a band of shine across the lower right
+    for (x, y) in ((10, 11), (9, 12), (11, 10)):
+        S.set(x, y, hexc("#fff0a0"))
+    # sparkles
+    for (cx, cy) in ((13, 2), (2, 12)):
+        for (dx, dy) in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
+            S.set(cx + dx, cy + dy, GLINT if (dx, dy) == (0, 0) else hexc("#ffd24a"))
+
+
 ICONS = (("eye", eye), ("haggle", haggle), ("fannypack", fannypack), ("crowd", crowd),
          ("sparkle", sparkle), ("mixed", mixed), ("bell", bell), ("bigtip", bigtip), ("dice", dice),
          ("sleepbag", sleepbag), ("fire", fire), ("monocle", monocle), ("detour", detour),
-         ("vintage", vintage), ("broom", broom), ("flip", flip), ("planner", planner), ("truck", truck))
+         ("vintage", vintage), ("broom", broom), ("flip", flip), ("planner", planner), ("truck", truck),
+         ("goose", goose))
 
 for n, f in ICONS:
     icon(n, f)

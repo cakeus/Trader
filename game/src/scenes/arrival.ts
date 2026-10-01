@@ -2,8 +2,9 @@ import type { App, Scene } from '../app';
 import { MUSIC_FADE } from '../engine/audio';
 import { H, W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
-import { areasInOrder, goodOf } from '../game/area';
+import { goodOf } from '../game/area';
 import { weatherOn } from '../game/events';
+import { startingCash } from '../game/run';
 import type { Quota } from '../game/types';
 import { drawBackground, drawWeather } from './common';
 import { MapScene } from './map';
@@ -118,14 +119,12 @@ export class AreaArrival implements Scene {
     }
     const { data } = app;
     const area = data.areas[moved.area];
-    const order = areasInOrder(data);
-    const prev = order[Math.max(0, order.findIndex((a) => a.id === area.id) - 1)];
     const cats = Object.values(data.categories);
 
     ui.dim(0.55);
     const w = 380;
     const blurb = ui.font.wrap(area.blurb, w - 40);
-    const h = 128 + blurb.length * 12 + cats.length * 22 + 44;
+    const h = 144 + blurb.length * 12 + cats.length * 22 + 44;
     const r = { x: (W - w) / 2, y: (H - h) / 2, w, h };
     ui.nine('panel', r);
     ui.text('Welcome to', W / 2, r.y + 14, C.inkSoft, { align: 'center' });
@@ -134,26 +133,24 @@ export class AreaArrival implements Scene {
     blurb.forEach((l, i) => ui.text(l, W / 2, y + i * 12, C.inkSoft, { align: 'center' }));
     y += blurb.length * 12 + 10;
 
-    ui.text('Your stamps still work: they go by category.', W / 2, y, C.ink, { align: 'center' });
+    ui.text('This area contains new items to trade.', W / 2, y, C.ink, { align: 'center' });
     y += 18;
-    // one row per category: old good -> new good
+    // one row per category: its good here
     for (const c of cats) {
-      const from = data.goods[goodOf(data, c.id, prev.id)];
-      const to = data.goods[goodOf(data, c.id, area.id)];
-      ui.text(c.name, r.x + 24, y + 4, C.inkSoft);
-      ui.image(from.iconMedium, r.x + 100, y);
-      ui.text(from.name, r.x + 120, y + 4, C.ink);
-      ui.text('->', r.x + 210, y + 4, C.inkSoft);
-      ui.image(to.iconMedium, r.x + 234, y);
-      ui.text(to.name, r.x + 254, y + 4, C.ink);
+      const good = data.goods[goodOf(data, c.id, area.id)];
+      ui.text(c.name, r.x + 100, y + 4, C.inkSoft);
+      ui.image(good.iconMedium, r.x + 180, y);
+      ui.text(good.name, r.x + 200, y + 4, C.ink);
       y += 22;
     }
     y += 6;
     const bag =
       moved.units > 0
         ? `Your ${moved.units} leftover good${moved.units === 1 ? ' was' : 's were'} sold for $${moved.refund}.`
-        : 'Prices are higher up here. Good luck!';
+        : (area.welcome ?? 'Prices are higher here. Good luck!');
     ui.text(bag, W / 2, y, moved.units > 0 ? C.green : C.inkSoft, { align: 'center' });
+    y += 16;
+    ui.text(`You now start each week with $${startingCash(data, run, area.id)}.`, W / 2, y, C.ink, { align: 'center' });
 
     if (ui.button({ x: W / 2 - 60, y: r.y + h - 36, w: 120, h: 26 }, 'Onward!') || ui.key('Enter')) {
       run.moved = null;

@@ -7,22 +7,20 @@ import { dealPrice, deckCards, offerKey, offerPrice, rollMarket, sellerPrice } f
 import { todayEvent } from './events';
 import type { BagItem, EndDayResult, GameData, Offer, Quota, RunState, SingleKind } from './types';
 
-export const START_CASH = 10;
 export const CAPACITY = 4;
-export const FIRST_QUOTA = 20;
 export const QUOTA_DAYS = 7;
 export const RUN_LOCATIONS = 3;
 /** The run's last day: meeting the quota due then wins the run. */
 export const LAST_DAY = 63;
 /** Base stars for meeting any quota. */
 export const BASE_STARS = 5;
-/** Bonus stars per day a quota is met early. */
-export const EARLY_STAR = 1;
 
+/** Quota `index` (0-based, one a week) from CONFIG.quotas (past its end, the last one's). */
 export function quotaFor(index: number): Quota {
+  const q = CONFIG.quotas;
   return {
     index,
-    amount: Math.round((FIRST_QUOTA * CONFIG.quotaGrowth ** index) / 5) * 5,
+    amount: q[Math.min(index, q.length - 1)],
     dueDay: QUOTA_DAYS * (index + 1),
     met: false,
     stars: BASE_STARS,
@@ -39,16 +37,22 @@ function pickLocations(data: GameData, seed: number, area: string, first: boolea
     .map((id) => ({ id, actorIds: [] as string[] }));
 }
 
+/** The cash a week starts with in an area: its `startCash`, plus Nest Egg (Golden Goose's
+ *  rollover is added on top at the weekly reset, in `endDay`). */
+export function startingCash(data: GameData, state: RunState, area: string): number {
+  return data.areas[area].startCash + (has(state, 'nestEgg') ? CONFIG.dealer.nestEgg : 0);
+}
+
 export function newRun(data: GameData, seed: number): RunState {
   const area = areaFor(data, 1);
   const locations = pickLocations(data, seed, area, true);
   const state: RunState = {
-    version: 13,
+    version: 15,
     seed,
     area,
     moved: null,
     day: 1,
-    cash: START_CASH,
+    cash: data.areas[area].startCash,
     capacity: CAPACITY,
     inventory: [],
     locations,
@@ -67,7 +71,7 @@ export function newRun(data: GameData, seed: number): RunState {
     status: 'active',
   };
   startDay(data, state);
-  updateQuota(state);
+  updateQuota(data, state);
   return state;
 }
 
@@ -125,7 +129,8 @@ function startDay(data: GameData, state: RunState): void {
 }
 
 /** The weekly bad day: each week (days 7w+1 to 7w+7) has a day picked ahead of time from the
- *  seed, never its last. On it, every buyer of a random good from the bag is a bad deal. With an
+ *  seed, from its 2nd to its 6th (not the 1st, when the bag is usually empty and it would just
+ *  move to the 2nd, nor the last). On it, every buyer of a random good from the bag is a bad deal. With an
  *  empty bag it moves to the next day, but never into the week's last day, and a week whose bag
  *  stays empty has none. No bad day while an area event is on (each area's last week).
  *  Returns today's bad good, or null. */
@@ -133,7 +138,7 @@ export function rollBadDay(data: GameData, state: RunState): string | null {
   const week = Math.floor((state.day - 1) / QUOTA_DAYS);
   const first = week * QUOTA_DAYS + 1;
   const last = first + QUOTA_DAYS - 2;
-  const planned = rngFor(state.seed, 'badDay', week).int(first, last);
+  const planned = rngFor(state.seed, 'badDay', week).int(first + 1, last);
   if (state.day < planned || state.day > last || state.badWeek === week) return null;
   if (todayEvent(data, state) || state.inventory.length === 0) return null;
   const goods = [...new Set(state.inventory.map((it) => it.good))].sort();
@@ -446,7 +451,7 @@ export function sellUnits(data: GameData, state: RunState, actorId: string, good
     soldGoods.push(goodId);
     if (has(state, 'mixedBag')) sale.tips += payTip(state, d.mixedBagTip);
   }
-  updateQuota(state);
+  updateQuota(data, state);
   return sale;
 }
 
@@ -516,63 +521,94 @@ function recordSale(state: RunState, paid: number, price: number): void {
   s.bestDaySales = Math.max(s.bestDaySales ?? 0, s.daySales);
 }
 
-/** Latch the quota as met once cash reaches it, awarding its stars plus the early bonus.
- *  Returns true if it just became met. */
-export function updateQuota(state: RunState): boolean {
-  const q = state.quota;
-  if (!q.met && state.cash >= q.amount) {
-    q.met = true;
-    // the early bonus counts from the day it's met, but the stars are paid when the quota ends
-    q.earlyBonus = EARLY_STAR * Math.max(0, q.dueDay - state.day);
-    q.starsAwarded = q.stars + q.earlyBonus;
-    q.starsPending = true;
-    return true;
-  }
-  return false;
+/** What the quota counts right now: cash, plus the bag cashed out at the end of the week, plus
+ *  tonight's stamp payouts. */
+export function quotaTotal(data: GameData, state: RunState): number {
+  return state.cash + cashOutValue(data, state) + payoutTotal(endOfDayPayouts(state));
 }
 
-/** Pay a met quota's stars (at the end of its due day). Saves from before stars were delayed
- *  have no `starsPending` and were already paid. */
+/** Update whether the quota is reached right now (`quotaTotal`; it's judged for good at the end
+ *  of the due day). Returns true if it just became reached. */
+export function updateQuota(data: GameData, state: RunState): boolean {
+  const q = state.quota;
+  const was = q.met;
+  q.met = quotaTotal(data, state) >= q.amount;
+  return q.met && !was;
+}
+
+/** The cash needed for each bonus star: CONFIG.bonusSteps above `amount`, rounded up. */
+export function bonusTargets(amount: number): number[] {
+  return CONFIG.bonusSteps.map((step) => Math.ceil(amount * (1 + step)));
+}
+
+/** Bonus stars for ending a quota with `cash`: one per bonus target reached. */
+export function bonusStars(amount: number, cash: number): number {
+  return bonusTargets(amount).filter((t) => cash >= t).length;
+}
+
+/** What the end-of-week cash-out pays for one bag unit: what was paid for it, or with the Last
+ *  Call stamp the good's lowest Amazing buyer price (from any area's buyers of it, with
+ *  Cramazing) when that's more. */
+export function cashOutPrice(data: GameData, item: BagItem, state: RunState): number {
+  if (!has(state, 'lastCall')) return item.paid;
+  const prices = Object.values(data.actors).flatMap((a) =>
+    a.role === 'buyer'
+      ? a.goods.filter((g) => g.good === item.good).map((g) => dealPrice(state, g.prices, 'amazing'))
+      : [],
+  );
+  return Math.max(item.paid, prices.length ? Math.min(...prices) : 0);
+}
+
+/** Pay a met quota's stars (at the end of its due day). */
 function payStars(state: RunState, q: Quota): void {
-  if (!q.starsPending) return;
-  q.starsPending = false;
   state.stars += q.starsAwarded ?? 0;
   state.stats.starsEarned += q.starsAwarded ?? 0;
   state.dealerCheapOwed = true;
 }
 
-/** What the last-chance buyout pays for one unit of a good: its lowest Bad-tier buyer price
- *  (from any area's buyers of it), or with the Last Call stamp its lowest Amazing price (with
- *  Cramazing). */
-export function buyoutPrice(data: GameData, goodId: string, state?: RunState): number {
-  const amazing = state !== undefined && has(state, 'lastCall');
-  const prices = Object.values(data.actors).flatMap((a) =>
-    a.role === 'buyer'
-      ? a.goods
-          .filter((g) => g.good === goodId)
-          .map((g) => (amazing ? dealPrice(state, g.prices, 'amazing') : (g.prices.bad ?? g.prices.good)))
-      : [],
-  );
-  return prices.length ? Math.min(...prices) : 0;
+/** What the whole bag would be cashed out for. */
+export function cashOutValue(data: GameData, state: RunState): number {
+  return state.inventory.reduce((sum, it) => sum + cashOutPrice(data, it, state), 0);
 }
 
-/** On an unmet quota's due day, with cash short of it and goods in the bag, the whole bag can be
- *  sold off at Bad-deal prices before the day ends. Returns the total it would pay, or null. */
-export function buyoutOffer(data: GameData, state: RunState): number | null {
-  const q = state.quota;
-  if (state.day < q.dueDay || q.met || state.inventory.length === 0) return null;
-  if (state.cash + payoutTotal(endOfDayPayouts(state)) >= q.amount) return null;
-  return state.inventory.reduce((sum, it) => sum + buyoutPrice(data, it.good, state), 0);
+/** A sale worth making before the week ends: a buyer at the location pays more for a bag good
+ *  than its oldest unit would cash out for. */
+export interface BetterSale {
+  good: string;
+  actorId: string;
+  price: number;
+  cashOut: number;
 }
 
-/** Sell the whole bag at the buyout price. Returns the cash received (0 if there's no offer). */
-export function takeBuyout(data: GameData, state: RunState): number {
-  const total = buyoutOffer(data, state);
-  if (total === null) return 0;
-  for (const it of state.inventory) recordSale(state, it.paid, buyoutPrice(data, it.good, state));
+/** Per bag good, the best sale at a location that beats the end-of-week cash-out (none when every
+ *  buyer there pays no more than the cash-out). */
+export function betterSales(data: GameData, state: RunState, locationId: string): BetterSale[] {
+  const view = areaView(data, state.area);
+  const best = new Map<string, BetterSale>();
+  for (const actorId of actorsAt(state, locationId)) {
+    const a = view.actors[actorId];
+    if (a?.role !== 'buyer') continue;
+    for (const { good } of a.goods) {
+      if (sellBlock(state, actorId, good) !== null) continue;
+      const item = state.inventory.find((it) => it.good === good)!;
+      const price = sellPrice(state, offer(state, actorId, good), item);
+      const cashOut = cashOutPrice(data, item, state);
+      if (price > cashOut && price > (best.get(good)?.price ?? -1)) best.set(good, { good, actorId, price, cashOut });
+    }
+  }
+  return [...best.values()];
+}
+
+/** End of the week: the whole bag is sold at `cashOutPrice`. Returns the cash received. */
+function cashOut(data: GameData, state: RunState): number {
+  let total = 0;
+  for (const it of state.inventory) {
+    const price = cashOutPrice(data, it, state);
+    recordSale(state, it.paid, price);
+    total += price;
+  }
   state.inventory = [];
   state.cash += total;
-  updateQuota(state);
   return total;
 }
 
@@ -582,25 +618,39 @@ export function daysLeft(state: RunState): number {
 
 export function endDay(data: GameData, state: RunState): EndDayResult {
   let result: EndDayResult = 'next';
-  // stamp payouts land before the quota is checked, so they can meet it
+  const q = state.quota;
+  const due = state.day >= q.dueDay;
+  if (due) q.cashBefore = state.cash;
+  // stamp payouts land before the quota is judged (and work on the bag before it's cashed out)
   const payout = payoutTotal(endOfDayPayouts(state));
   state.cash += payout;
   state.stats.profit = (state.stats.profit ?? 0) + payout;
-  updateQuota(state);
-  if (state.day >= state.quota.dueDay) {
-    if (!state.quota.met) {
+  if (due) {
+    // the end of the week: the bag is cashed out, and the quota is judged on what that leaves
+    q.payouts = payout;
+    q.cashOut = cashOut(data, state);
+    q.finalCash = state.cash;
+    q.met = state.cash >= q.amount;
+    if (!q.met) {
       state.status = 'failed';
       return 'failed';
     }
     state.stats.quotasMet++;
-    payStars(state, state.quota);
+    q.bonusStars = bonusStars(q.amount, state.cash);
+    q.starsAwarded = q.stars + q.bonusStars;
+    payStars(state, q);
     if (state.day >= LAST_DAY) {
-      // the last quota: the run is won, and ends here (the day and bag stay as they were)
+      // the last quota: the run is won, and ends here (the score is the final cash)
       state.status = 'won';
       return 'won';
     }
-    state.quota = quotaFor(state.quota.index + 1);
+    state.quota = quotaFor(q.index + 1);
     state.deck = { supplier: 0, buyer: 0 }; // a fresh tier deck for each quota
+    // a new week starts from the starting cash of wherever it's spent, plus (with Golden Goose)
+    // whatever the week ended with above its quota
+    const rollover = has(state, 'goldenGoose') ? state.cash - q.amount : 0;
+    if (rollover > 0) q.rollover = rollover;
+    state.cash = startingCash(data, state, areaFor(data, state.day + 1)) + rollover;
     result = 'quotaPassed';
   }
   // only ever forward (a debug jump can put the run ahead of its day's area)
@@ -616,7 +666,7 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
   state.detoured = null;
   state.stats.daySales = 0;
   startDay(data, state);
-  updateQuota(state);
+  updateQuota(data, state);
   return result;
 }
 
@@ -636,21 +686,12 @@ export function moveArea(data: GameData, state: RunState, area: string): void {
   state.moved = { area, units, refund };
 }
 
-/** Debug: latch the current quota as met (its stars pending, as if met today), or unmet again. */
-export function debugSetQuotaMet(state: RunState, met: boolean): void {
-  const q = state.quota;
-  if (met) {
-    if (q.met) return;
-    const cash = state.cash;
-    state.cash = Math.max(cash, q.amount);
-    updateQuota(state);
-    state.cash = cash;
-  } else {
-    q.met = false;
-    q.starsPending = false;
-    delete q.starsAwarded;
-    delete q.earlyBonus;
-  }
+/** Debug: top cash up so the quota is reached, or lower it to $1 short (not below $0). */
+export function debugSetQuotaMet(data: GameData, state: RunState, met: boolean): void {
+  const gap = state.quota.amount - quotaTotal(data, state);
+  if (met) state.cash += Math.max(0, gap);
+  else if (gap <= 0) state.cash = Math.max(0, state.cash + gap - 1);
+  updateQuota(data, state);
 }
 
 /** Debug: the area after the current one, or null in the last area. */
@@ -669,7 +710,7 @@ export function debugGotoNextArea(data: GameData, state: RunState): void {
   state.moved = null;
   state.visited = null;
   startDay(data, state);
-  updateQuota(state);
+  updateQuota(data, state);
 }
 
 /** Debug: the day "advance" goes to: the current quota's due day, or the next one's when it's

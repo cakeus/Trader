@@ -29,6 +29,7 @@ export function buildData(
     const here = locations.filter((l) => l.area === area.id);
     const slots = here.reduce((sum, l) => sum + l.actorSlots, 0);
     if (here.length === 0) errors.push(`area ${area.id}: no locations`);
+    if (!(Number.isInteger(area.startCash) && area.startCash >= 1)) errors.push(`area ${area.id}: startCash must be a whole number >= 1`);
     if (slots > cast) errors.push(`area ${area.id}: only ${cast} actors for ${slots} daily slots`);
     // events start while the run is still here, after the area's first day
     const next = Math.min(Infinity, ...areas.filter((a) => a.fromDay > area.fromDay).map((a) => a.fromDay));

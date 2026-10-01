@@ -1,4 +1,4 @@
-export type SfxName = 'click' | 'open' | 'buy' | 'sell' | 'deny' | 'day' | 'quota' | 'fail' | 'lastDay';
+export type SfxName = 'click' | 'open' | 'buy' | 'sell' | 'deny' | 'day' | 'quota' | 'fail' | 'lastDay' | 'tick' | 'star';
 
 interface Note {
   f: number;
@@ -23,6 +23,11 @@ const SFX: Record<SfxName, Note[]> = {
   sell: [
     { f: 988, t: 0, d: 0.05, type: 'square', v: 0.05 },
     { f: 1319, t: 0.05, d: 0.12, type: 'square', v: 0.05 },
+  ],
+  tick: [{ f: 1320, t: 0, d: 0.025, type: 'square', v: 0.025 }],
+  star: [
+    { f: 1047, t: 0, d: 0.06, type: 'triangle', v: 0.08 },
+    { f: 1568, t: 0.06, d: 0.16, type: 'triangle', v: 0.07 },
   ],
   deny: [{ f: 180, to: 120, t: 0, d: 0.12, type: 'sawtooth', v: 0.04 }],
   day: [

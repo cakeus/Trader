@@ -75,6 +75,10 @@ export interface AreaDef extends WeatherSpots {
   /** Background music, looped while the run is here (the first area's also plays on the title screen). */
   music: string;
   fromDay: number;
+  /** The arrival popup's line about prices here (a default one when unset). */
+  welcome?: string;
+  /** Cash every week here starts with (after a met quota, cash is reset to this). */
+  startCash: number;
   /** Animated weather drawn over the map. */
   weather?: Weather;
   /** Events that start partway through the stay (the latest one started is the one on). */
@@ -160,15 +164,23 @@ export interface Quota {
   index: number;
   amount: number;
   dueDay: number;
-  /** Latches true once cash reaches `amount`, even if cash later drops. */
+  /** Whether it's reached right now: cash, plus the bag cashed out at cost, plus tonight's stamp
+   *  payouts (`quotaTotal`). It's judged for good at the end of the due day. The player isn't
+   *  shown it until then (the sims and the debug menu use it). */
   met: boolean;
   /** Base stars for meeting this quota. */
   stars: number;
-  /** Set when the quota is met: total stars given, and how many of them were the early bonus. */
+  /** Set at the end of the due day, when it's judged (shown by the QuotaResult tally): cash before
+   *  and after the night's stamp payouts, what the bag was cashed out for, the final cash, and the
+   *  stars paid (base plus `bonusStars` for beating it by CONFIG.bonusSteps). */
+  cashBefore?: number;
+  payouts?: number;
+  cashOut?: number;
+  finalCash?: number;
+  bonusStars?: number;
   starsAwarded?: number;
-  earlyBonus?: number;
-  /** Met, but the stars aren't paid until the end of the due day. */
-  starsPending?: boolean;
+  /** Golden Goose: the cash above the quota carried into the next week. */
+  rollover?: number;
 }
 
 export interface RunLocation {
@@ -200,13 +212,13 @@ export interface BagItem {
 /** Deal kinds bought in ranks (I, II, III...); each rank needs the one before. */
 export type RankedKind = 'bag' | 'stockAll' | 'buyerStockAll' | 'luckAll';
 /** Deal kinds that come once per category (they apply to that category's good in every area). */
-export type CategoryKind = 'discount' | 'stock' | 'buyerStock' | 'luck';
+export type CategoryKind = 'discount' | 'stock' | 'buyerStock' | 'luck' | 'sellBonus';
 /** Deal kinds that come once, with no rank or category. */
 export type SingleKind =
   | 'discountAll' | 'dailyDiscount' | 'tip' | 'cantGetEnough' | 'collector'
   | 'birdsEye' | 'haggler' | 'fannyPack' | 'packedHouse' | 'cramazing' | 'mixedBag' | 'lastCall'
   | 'bigTipper' | 'fuzzyDice' | 'sleepingBag' | 'campFire' | 'monocle' | 'detour' | 'vintage'
-  | 'cleanSweep' | 'flipper' | 'perfectPlanner' | 'dumpTruck';
+  | 'cleanSweep' | 'flipper' | 'perfectPlanner' | 'dumpTruck' | 'nestEgg' | 'goldenGoose';
 
 /** How rare a stamp is: rarer ones come up more often as the weeks go by (CONFIG.dealer.rarityOdds). */
 export type Rarity = 'common' | 'rare' | 'epic';
@@ -262,7 +274,7 @@ export interface AreaMove {
 }
 
 export interface RunState {
-  version: 13;
+  version: 15;
   seed: number;
   /** The area the run is in (`areas.json`). */
   area: string;

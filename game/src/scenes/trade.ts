@@ -91,7 +91,6 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string, max =
     ui.floater(REASON[block], mx, my - 12, C.redLight);
     return;
   }
-  const wasMet = run.quota.met;
   const cash = run.cash;
   if (selling) {
     buy(app.data, run, actorId, good, max ? maxBuy(run, actorId, good) : 1);
@@ -103,10 +102,6 @@ export function tradeWith(app: App, ui: Ui, actorId: string, good: string, max =
     ui.floater(`+$${run.cash - cash - sale.tips}`, mx, my - 12, C.gold);
     if (sale.tips) ui.floater(`+$${sale.tips} tip!`, mx, my - 26, C.cyan);
     if (sale.lucky) ui.floater('Lucky dice! Amazing deal', mx, my - (sale.tips ? 40 : 26), C.cyan);
-  }
-  if (!wasMet && run.quota.met) {
-    app.sfx.play('quota');
-    ui.toast('Quota reached!');
   }
   app.save();
 }

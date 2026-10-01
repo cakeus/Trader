@@ -1,9 +1,8 @@
 """Tollbert: a big, dopey, mossy bridge troll with a bulbous nose, underbite
-tusks and shaggy hair, and a rope-tied bundle of toll pickaxes on his back."""
-import math
-
+tusks and shaggy hair, and a rope-tied bundle of toll mittens on his back (none of
+them match)."""
 from pixelkit import hexc, ellipse, edge, rect
-from portraitkit import new, poly, eye, blush, clip, finish, fuzz, GLINT
+from portraitkit import new, poly, line, eye, blush, clip, finish, fuzz, GLINT
 
 S = new()
 
@@ -21,46 +20,39 @@ TK_OUT = hexc("#7a6a4a")
 MOUTH = hexc("#3a1a2a")
 SHROOM = [hexc("#ff9a8a"), hexc("#e8404a"), hexc("#b82a3c")]
 SHROOM_OUT = hexc("#4a0e1e")
-WOOD = [hexc("#f0c488"), hexc("#d0924e"), hexc("#a8683a"), hexc("#7e4a2a")]
-WOOD_OUT = hexc("#4a2a1c")
-STEEL = [hexc("#e4eef8"), hexc("#a8bcd4"), hexc("#7890b0"), hexc("#566a8c")]
-STEEL_OUT = hexc("#27304a")
+CUFF = [hexc("#fffbea"), hexc("#f2e2c0"), hexc("#c2a67c")]
+MITTENS = [  # (ramp, outline): none of them match
+    ([hexc("#ff9a86"), hexc("#e8524a"), hexc("#b8383c"), hexc("#8a2630")], hexc("#5e1c24")),
+    ([hexc("#a8d0ff"), hexc("#5c8ce0"), hexc("#3e64b0"), hexc("#2c4a88")], hexc("#16244e")),
+    ([hexc("#fff0a0"), hexc("#f2c84a"), hexc("#c8962a"), hexc("#a07020")], hexc("#5a3a10")),
+    ([hexc("#c4f0a8"), hexc("#74c45c"), hexc("#4a9a44"), hexc("#347a3a")], hexc("#163a1e")),
+]
 
 
-def pickaxe(S, base, top, half=11.0, bend=4.0, thick=2.4, hw=1.4):
-    """A pickaxe like the good's icon: handle from base to top, curved head at top."""
-    L = math.hypot(top[0] - base[0], top[1] - base[1])
-    D = ((top[0] - base[0]) / L, (top[1] - base[1]) / L)
-    N = (-D[1], D[0])
-
-    def frame(x, y):
-        dx, dy = x + 0.5 - base[0], y + 0.5 - base[1]
-        return dx * D[0] + dy * D[1], dx * N[0] + dy * N[1]
-
-    def region(test):
-        return {(x, y) for y in range(64) for x in range(64) if test(*frame(x, y))}
-
-    def hc(v):
-        t = min(1.0, abs(v) / half)
-        return L - bend * t * t
-
-    handle = region(lambda u, v: 0 <= u <= L and abs(v) <= hw)
-    head = region(lambda u, v: abs(v) <= half and
-                  abs(u - hc(v)) <= thick * (1 - min(1, abs(v) / half) ** 1.6) + 0.55)
-    collar = region(lambda u, v: L - 2.8 <= u <= L + 1.8 and abs(v) <= hw + 1.2)
-    S.blob(handle, WOOD, WOOD_OUT, lx=0.6, ly=0.6)
-    S.blob(head, STEEL, STEEL_OUT, lx=0.65, ly=0.65, cuts=(-0.4, 0.15, 0.6))
-    S.blob(collar, STEEL[1:], STEEL_OUT, lx=0.6, ly=0.6, cuts=(-0.2, 0.4))
-    for (x, y) in head - edge(head):
-        u, v = frame(x, y)
-        if u - hc(v) > 0.5 and abs(v) < half - 2.5:
-            S.set(x, y, STEEL[0])
+def mitten(S, ox, oy, ramp, out, flip=False):
+    """A small upright mitten, 10 wide by 13 tall, its top-left corner at (ox, oy)."""
+    def fx(x):
+        return ox + (9 - x if flip else x)
+    shape = {(x, y) for (x, y) in ellipse(3.5, 4.0, 3.5, 4.0) if y <= 4} | rect(0, 4, 8, 5)
+    shape |= ellipse(8.2, 5.2, 1.6, 2.4) | {(7, 8)}
+    body = {(fx(x), oy + y) for (x, y) in shape}
+    S.blob(body, ramp, out, cuts=(-0.5, 0.25, 0.7))
+    for y in range(4, 7):
+        S.set(fx(7), oy + y, out)
+    cuff = {(fx(x), oy + y) for (x, y) in rect(0, 9, 8, 4)}
+    S.blob(cuff, CUFF, out, cuts=(-0.4, 0.5))
+    return fx(4), oy + 12
 
 
-# the toll: a fan of pickaxes slung over his back, heads up
-pickaxe(S, (16, 56), (4, 16), half=8, bend=3)
-pickaxe(S, (16, 56), (19, 5), half=9, bend=3.5)
-pickaxe(S, (18, 56), (12, 9), half=8.5, bend=3.2)
+# the toll: a bundle of odd mittens tied on cords over his back
+ends = []
+for i, (ox, oy, flip) in enumerate(((1, 20, False), (6, 8, True), (16, 2, False), (2, 33, True))):
+    ramp, out = MITTENS[i]
+    ends.append(mitten(S, ox, oy, ramp, out, flip))
+for (x, y) in ends:
+    for p in line(x, y, 12, 48):
+        if S.get(*p) is None:
+            S.set(*p, ROPE[1])
 
 # big patched tunic shoulders
 tunic = clip(ellipse(32, 65, 30, 15))

@@ -45,6 +45,8 @@ nine_slice("btn_disabled", hexc("#6a5c66"), hexc("#c9bcb4"), hexc("#ddd2ca"), he
 nine_slice("row", hexc("#c9a98a"), hexc("#f3e2c4"), hexc("#fff4dc"), hexc("#e2cca8"))
 nine_slice("row_hover", hexc("#b87a4a"), hexc("#ffe7b8"), hexc("#fff6dc"), hexc("#f2d094"))
 
+WOOD_O = hexc("#4a2a1c")
+
 # --- 16x16 icons -------------------------------------------------------------
 
 def icon(name, draw):
@@ -247,8 +249,27 @@ def collector(S):
     S.set(14, 8, hexc("#b87a4a"))
 
 
+def nest(S):
+    """Nest Egg: a speckled egg sitting in a twig nest."""
+    egg = ellipse(7.5, 6.5, 3.6, 4.6)
+    S.blob(egg, [hexc("#fffaf0"), hexc("#f6e8cc"), hexc("#e2cca8"), hexc("#c9a98a")],
+           hexc("#8a6a5a"), cuts=(-0.4, 0.2, 0.6))
+    for (x, y) in ((8, 4), (6, 7), (9, 7)):
+        S.set(x, y, hexc("#b89878"))
+    S.set(6, 3, hexc("#ffffff"))
+    nest = {(x, y) for (x, y) in ellipse(7.5, 9.5, 7.2, 5.2) if y >= 9}
+    S.blob(nest, [hexc("#d8a070"), hexc("#b07848"), hexc("#8a5a34"), hexc("#6a4228")],
+           WOOD_O, cuts=(-0.4, 0.2, 0.6))
+    # woven twigs
+    for (x, y) in ((2, 10), (3, 11), (5, 10), (6, 11), (9, 10), (10, 11), (12, 10), (4, 13), (8, 13), (11, 12)):
+        S.set(x, y, hexc("#6a4228"))
+    for (x, y) in ((3, 10), (7, 10), (11, 10), (6, 12)):
+        S.set(x, y, hexc("#e8c090"))
+
+
 for n, f in (("coin", coin), ("bag", bag), ("calendar", calendar), ("check", check),
-             ("pin", pin), ("star", star), ("flag", flag), ("tag", tag), ("tip", tip), ("more", more), ("collector", collector)):
+             ("pin", pin), ("star", star), ("flag", flag), ("tag", tag), ("tip", tip), ("more", more), ("collector", collector),
+             ("nest", nest)):
     icon(n, f)
 
 # --- cursor (12x14 arrow) -------------------------------------------------------
@@ -277,7 +298,7 @@ S.save("cursor", "ui", scale=12, show=False)
 import os
 from pixelkit import ASSETS, PREVIEWS
 names = ["panel", "panel_dark", "btn", "btn_hover", "btn_down", "btn_disabled", "row", "row_hover",
-         "icon_coin", "icon_bag", "icon_calendar", "icon_check", "icon_pin", "icon_star", "icon_flag", "icon_tag", "icon_tip", "icon_more", "icon_collector", "cursor"]
+         "icon_coin", "icon_bag", "icon_calendar", "icon_check", "icon_pin", "icon_star", "icon_flag", "icon_tag", "icon_tip", "icon_more", "icon_collector", "icon_nest", "cursor"]
 sheet = Image.new("RGBA", (len(names) * 28 + 4, 30), (120, 150, 130, 255))
 for i, n in enumerate(names):
     im = Image.open(os.path.join(ASSETS, "ui", n + ".png"))
