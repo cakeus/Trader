@@ -1,6 +1,8 @@
-# Trader
+# Higgle
 
-A cute, whimsical, lofi pixel-art trading roguelike. It is a 640×480 canvas game built with Vite and TypeScript, and its art is generated procedurally with Python and Pillow.
+A cute, whimsical, lofi pixel-art trading roguelike ("a tiny trading game"; the repo and save keys still say Trader). It is a 640×480 canvas game built with Vite and TypeScript, and its art is generated procedurally with Python and Pillow.
+
+Every push to `main` builds `game/` and deploys it to GitHub Pages (`.github/workflows/deploy.yml`) at https://cakeus.github.io/Trader/. Asset paths must stay relative (`base: './'`), since Pages serves it from a subfolder.
 
 ## How a run plays
 
