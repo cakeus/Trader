@@ -90,7 +90,7 @@ export class AreaTransition implements Scene {
     ctx.save();
     ctx.globalAlpha = alpha;
     const scale = 5;
-    const y = H / 2 - Math.round((7 * scale) / 2) + rise;
+    const y = H / 2 - Math.round(ui.font.cap(scale) / 2) + rise;
     for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 3], [2, 3], [-2, 3]])
       ui.text(area.name, W / 2 + dx, y + dy, C.shadow, { align: 'center', scale });
     ui.text(area.name, W / 2, y, C.gold, { align: 'center', scale });

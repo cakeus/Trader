@@ -1,7 +1,7 @@
 import type { Assets } from './assets';
 import { isMobile } from './device';
 import type { Sfx } from './audio';
-import type { Font, TextOpts } from './font';
+import type { Fonts, TextOpts } from './font';
 import type { Input } from './input';
 import { H, W } from './screen';
 
@@ -50,7 +50,11 @@ export interface TipAction {
 }
 
 const CORNER = 8;
-const TIP_BTN_H = 22;
+const TIP_BTN_H = isMobile ? 30 : 22;
+/** Mobile tooltips are a sheet across the screen, docked at the bottom, or at this y (under the
+ *  HUD) when the item tapped is in the bottom half. */
+const SHEET_TOP = 44;
+const TOAST_H = isMobile ? 38 : 30;
 /** How long a big centre-screen announcement stays up, in seconds. */
 const ANNOUNCE_T = 2.2;
 
@@ -68,6 +72,8 @@ export class Ui {
   /** Touch screens can't hover: tapping an item picks it, which shows its tooltip (anchored to
    *  it, with action buttons) until the next tap elsewhere. */
   readonly touch = isMobile;
+  /** The pitch of stacked lines of detail text (tooltips, tables): 12px, or 17 with mobile's big font. */
+  readonly lh = isMobile ? 17 : 12;
   private picked: string | null = null;
   private pickedRect: Rect | null = null;
   private pickedSeen = false;
@@ -79,7 +85,7 @@ export class Ui {
 
   constructor(
     readonly ctx: CanvasRenderingContext2D,
-    readonly font: Font,
+    readonly font: Fonts,
     readonly assets: Assets,
     readonly input: Input,
     readonly sfx: Sfx,
@@ -179,6 +185,11 @@ export class Ui {
     this.font.draw(this.ctx, s, x, y, color, opts);
   }
 
+  /** The y to draw text at `scale` so its capitals sit centred in a box at `y`, `h` tall. */
+  vcenter(y: number, h: number, scale = 1): number {
+    return y + Math.floor((h - 1 - this.font.cap(scale)) / 2);
+  }
+
   /** Word-wrapped paragraph; returns the height used. */
   para(s: string, x: number, y: number, maxW: number, color = C.ink): number {
     const lines = this.font.wrap(s, maxW);
@@ -197,7 +208,7 @@ export class Ui {
     const kind: PanelKind = opts.disabled ? 'btn_disabled' : down ? 'btn_down' : hot ? 'btn_hover' : 'btn';
     this.nine(kind, r);
     const scale = opts.scale ?? 1;
-    const ty = r.y + Math.floor((r.h - 1 - 7 * scale) / 2) + (down ? 1 : 0);
+    const ty = this.vcenter(r.y, r.h, scale) + (down ? 1 : 0);
     this.text(label, r.x + r.w / 2, ty, opts.disabled ? '#877a80' : C.ink, { align: 'center', scale });
     const hit = !opts.disabled && this.clicked(r);
     if (hit) this.sfx.play('click');
@@ -211,9 +222,10 @@ export class Ui {
     this.overlays.push(fn);
   }
 
-  /** Dark tooltip box near the cursor, kept on-screen. `body` draws inside (x, y). On touch
-   *  screens it sits by the picked item instead, with `actions` as buttons along its bottom. */
-  tooltip(w: number, h: number, body: (x: number, y: number) => void, actions: TipAction[] = []): void {
+  /** Dark tooltip box near the cursor, kept on-screen. `body` draws inside (x, y), `w` wide. On
+   *  touch screens it's a sheet across the screen, away from the picked item, with `actions` as
+   *  buttons along its bottom (`w` is then the sheet's width; `h` is still the caller's). */
+  tooltip(w: number, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[] = []): void {
     if (this.touch && this.pickedRect) {
       this.pickedTooltip(this.pickedRect, w, h, body, actions);
       return;
@@ -226,36 +238,30 @@ export class Ui {
       if (x + w > this.ctx.canvas.width - 4) x = mx - w - 8;
       if (y + h > this.ctx.canvas.height - 4) y = this.ctx.canvas.height - h - 4;
       this.nine('panel_dark', { x, y, w, h });
-      body(x + 8, y + 7);
+      body(x + 8, y + 7, w - 16);
     });
   }
 
-  private pickedTooltip(at: Rect, w: number, h: number, body: (x: number, y: number) => void, actions: TipAction[]): void {
-    const cw = this.ctx.canvas.width;
-    const ch = this.ctx.canvas.height;
-    const bw = 76;
-    if (actions.length > 0) {
-      w = Math.max(w, actions.length * (bw + 6) + 10);
-      h += TIP_BTN_H + 6;
-    }
-    // below the item if it fits, else above it, else as low as it goes
-    let x = Math.round(at.x + at.w / 2 - w / 2);
-    x = Math.max(4, Math.min(cw - w - 4, x));
-    let y = at.y + at.h + 4;
-    if (y + h > ch - 4) y = at.y - h - 4;
-    if (y < 4) y = ch - h - 4;
+  private pickedTooltip(at: Rect, _w: number, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[]): void {
+    const w = W - 16;
+    if (actions.length > 0) h += TIP_BTN_H + 8;
+    // docked at the bottom, or at the top when the item is in the bottom half
+    const x = 8;
+    const y = at.y + at.h / 2 < H / 2 ? H - h - 8 : SHEET_TOP;
     const r: Rect = { x, y, w, h };
     this.overlay(() => {
       this.nine('panel_dark', r);
-      body(x + 8, y + 7);
+      body(x + 10, y + 8, w - 20);
       this.inPopup = true;
       const i = this.input;
       if (i.released && this.inside(r, i.pressX, i.pressY)) this.tapUsed = true;
-      const gap = 6;
-      const bw2 = Math.min(bw * 1.5, (w - 12 - gap * (actions.length - 1)) / Math.max(1, actions.length));
-      const total = actions.length * bw2 + gap * (actions.length - 1);
+      // the buttons share the bottom, each at most 160 wide, centred
+      const gap = 8;
+      const n = Math.max(1, actions.length);
+      const bw = Math.min(160, (w - 20 - gap * (n - 1)) / n);
+      const total = actions.length * bw + gap * (actions.length - 1);
       actions.forEach((a, j) => {
-        const br: Rect = { x: Math.round(x + (w - total) / 2 + j * (bw2 + gap)), y: y + h - TIP_BTN_H - 6, w: Math.round(bw2), h: TIP_BTN_H };
+        const br: Rect = { x: Math.round(x + (w - total) / 2 + j * (bw + gap)), y: y + h - TIP_BTN_H - 8, w: Math.round(bw), h: TIP_BTN_H };
         if (this.button(br, a.label, { disabled: a.disabled })) a.onClick();
       });
       this.inPopup = false;
@@ -296,8 +302,9 @@ export class Ui {
       const w = this.font.measure(this.toastText, 2) + 32;
       const slide = Math.min(1, this.toastAge * 6) * Math.min(1, (2.4 - this.toastAge) * 6);
       const y = Math.round(-40 + slide * 76);
-      this.nine('panel_dark', { x: (W - w) / 2, y, w, h: 30 });
-      this.text(this.toastText, W / 2, y + 8, C.gold, { align: 'center', scale: 2, shadow: C.shadow });
+      this.nine('panel_dark', { x: (W - w) / 2, y, w, h: TOAST_H });
+      const ty = y + Math.floor((TOAST_H - this.font.cap(2)) / 2);
+      this.text(this.toastText, W / 2, ty, C.gold, { align: 'center', scale: 2, shadow: C.shadow });
     }
     if (this.announceAge < ANNOUNCE_T) this.drawAnnounce();
     for (const fn of this.overlays) fn();
@@ -330,7 +337,7 @@ export class Ui {
     const pop = 1 + 2.70158 * p * p * p + 1.70158 * p * p;
     const rot = Math.sin(a * 14) * 0.07 * Math.max(0, 1 - a / 1.2);
     const scale = 5;
-    const y = -Math.round((7 * scale) / 2);
+    const y = -Math.round(this.font.cap(scale) / 2);
     ctx.save();
     ctx.globalAlpha = Math.max(0, alpha);
     ctx.translate(W / 2, H / 2);

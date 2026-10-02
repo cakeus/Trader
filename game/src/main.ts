@@ -1,7 +1,8 @@
 import { App } from './app';
 import { Assets, loadJSON } from './engine/assets';
 import { Sfx } from './engine/audio';
-import { Font, type FontMeta } from './engine/font';
+import { isMobile } from './engine/device';
+import { Font, Fonts, type FontMeta } from './engine/font';
 import { Input } from './engine/input';
 import { createScreen } from './engine/screen';
 import { loadSettings } from './engine/settings';
@@ -17,13 +18,19 @@ const UI_IMAGES = [
 
 async function boot(): Promise<void> {
   const screen = createScreen(document.getElementById('screen') as HTMLCanvasElement);
-  const [data, fontMeta] = await Promise.all([loadData(), loadJSON<FontMeta>('assets/font/font.json')]);
+  // mobile draws detail text in the big font
+  const [data, fontMeta, bigMeta] = await Promise.all([
+    loadData(),
+    loadJSON<FontMeta>('assets/font/font.json'),
+    isMobile ? loadJSON<FontMeta>('assets/font/font_lg.json') : null,
+  ]);
 
   const assets = new Assets();
   await assets.load([
     ...UI_IMAGES,
     ...STAMP_IMAGES,
     'assets/font/font.png',
+    ...(bigMeta ? ['assets/font/font_lg.png'] : []),
     ...Object.values(data.areas).map((a) => a.map),
     ...Object.values(data.goods).flatMap((g) => [g.icon, g.iconSmall, g.iconMedium]),
     ...Object.values(data.actors).map((a) => a.portrait),
@@ -31,7 +38,8 @@ async function boot(): Promise<void> {
     ...Object.values(data.locations).map((l) => l.background),
   ]);
 
-  const font = new Font(assets.get('assets/font/font.png')!, fontMeta);
+  const small = new Font(assets.get('assets/font/font.png')!, fontMeta);
+  const font = new Fonts(small, bigMeta ? new Font(assets.get('assets/font/font_lg.png')!, bigMeta) : small);
   const input = new Input();
   const sfx = new Sfx();
   input.attach(screen, () => sfx.unlock());
@@ -43,6 +51,8 @@ async function boot(): Promise<void> {
   const ui = new Ui(screen.ctx, font, assets, input, sfx);
   const app = new App(screen, ui, data, assets, input, sfx, loadSettings());
   app.goto(new MainMenu(app));
+  // dev builds: the app on `window`, for driving scenes from the browser console or a test script
+  if (import.meta.env.DEV) (window as unknown as { app: App }).app = app;
 
   // `?timer` drives frames with setTimeout so the game keeps ticking in a hidden
   // window (handy for automated browser testing); normally we use rAF.

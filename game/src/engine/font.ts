@@ -1,5 +1,6 @@
 export interface FontMeta {
   height: number;
+  /** Rows above the baseline, so also the capitals' height. */
   baseline: number;
   lineHeight: number;
   spacing: number;
@@ -23,6 +24,11 @@ export class Font {
 
   get lineHeight(): number {
     return this.meta.lineHeight;
+  }
+
+  /** How tall capitals are at `scale`. */
+  cap(scale = 1): number {
+    return this.meta.baseline * scale;
   }
 
   private tinted(color: string): HTMLCanvasElement {
@@ -66,20 +72,69 @@ export class Font {
     }
   }
 
-  /** Greedy word wrap to `maxW` pixels. */
+  /** Greedy word wrap to `maxW` pixels. A `\n` starts a new line, and a word too long for a line
+   *  of its own is broken wherever it has to be. */
   wrap(text: string, maxW: number, scale = 1): string[] {
     const lines: string[] = [];
     let line = '';
-    for (const word of text.split(' ')) {
-      const next = line ? `${line} ${word}` : word;
-      if (line && this.measure(next, scale) > maxW) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = next;
+    // push the line, and keep the overflow of a word too long to fit one
+    const flush = () => {
+      while (line.length > 1 && this.measure(line, scale) > maxW) {
+        let n = line.length - 1;
+        while (n > 1 && this.measure(line.slice(0, n), scale) > maxW) n--;
+        lines.push(line.slice(0, n));
+        line = line.slice(n);
       }
-    }
+    };
+    text.split('\n').forEach((para, p) => {
+      if (p > 0) {
+        lines.push(line);
+        line = '';
+      }
+      for (const word of para.split(' ')) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && this.measure(next, scale) > maxW) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = next;
+        }
+        flush();
+      }
+    });
     if (line) lines.push(line);
     return lines;
+  }
+}
+
+/** The game's text: the small font, plus on mobile a bigger one for detail text (scale 1 and 2;
+ *  scale 3 and up stay the small font scaled). Same calls as a `Font`; each picks by its scale. */
+export class Fonts {
+  constructor(readonly small: Font, readonly detail: Font = small) {}
+
+  /** The font text at `scale` is drawn with. */
+  at(scale = 1): Font {
+    return scale <= 2 ? this.detail : this.small;
+  }
+
+  /** The detail font's line height (scale-1 text). */
+  get lineHeight(): number {
+    return this.detail.lineHeight;
+  }
+
+  cap(scale = 1): number {
+    return this.at(scale).cap(scale);
+  }
+
+  measure(text: string, scale = 1): number {
+    return this.at(scale).measure(text, scale);
+  }
+
+  draw(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, opts: TextOpts = {}): void {
+    this.at(opts.scale).draw(ctx, text, x, y, color, opts);
+  }
+
+  wrap(text: string, maxW: number, scale = 1): string[] {
+    return this.at(scale).wrap(text, maxW, scale);
   }
 }
