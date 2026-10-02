@@ -1,4 +1,5 @@
 import type { App, Scene } from '../app';
+import { isMobile } from '../engine/device';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type TipAction, type Ui } from '../engine/ui';
 import { owns } from '../game/dealer';
@@ -39,7 +40,7 @@ export class MapScene implements Scene {
       const def = app.data.locations[loc.id];
       const { x, y } = def.mapPos;
       const lw = ui.font.measure(def.name) + 18;
-      const label: Rect = { x: Math.round(x - lw / 2), y: y + 4, w: lw, h: 22 };
+      const label: Rect = { x: Math.round(x - lw / 2), y: y + 4, w: lw, h: isMobile ? 24 : 22 };
       const hit: Rect = { x: label.x, y: y - 20, w: lw, h: 46 };
       const hot = ui.focus(`loc:${loc.id}`, hit);
       // left on a Detour: it can't be visited again today
@@ -49,7 +50,7 @@ export class MapScene implements Scene {
       if (left) ui.ctx.globalAlpha = 0.5;
       ui.image('assets/ui/icon_pin.png', x - 8, y - 17 + bob);
       ui.nine(hot && !left ? 'row_hover' : 'panel', label);
-      ui.text(def.name, x, label.y + 7, left ? C.inkSoft : C.ink, { align: 'center' });
+      ui.text(def.name, x, ui.vcenter(label.y, label.h), left ? C.inkSoft : C.ink, { align: 'center' });
       // snowed in (Blizzard): a lumpy cap of snow on the label
       if (run.snowedAt === loc.id) {
         const { ctx } = ui;
@@ -81,8 +82,9 @@ export class MapScene implements Scene {
 
     const prompt = `Day ${run.day}`;
     const pw = ui.font.measure(prompt, 2) + 32;
-    ui.nine('panel_dark', { x: W - pw - 8, y: H - 44, w: pw, h: 36 });
-    ui.text(prompt, W - pw / 2 - 8, H - 33, C.cream, { align: 'center', scale: 2 });
+    const ph = isMobile ? 38 : 36;
+    ui.nine('panel_dark', { x: W - pw - 8, y: H - ph - 8, w: pw, h: ph });
+    ui.text(prompt, W - pw / 2 - 8, H - ph - 8 + Math.floor((ph - ui.font.cap(2)) / 2), C.cream, { align: 'center', scale: 2 });
 
     drawBag(app, ui, 8, H - 56);
     drawHud(app, ui);
@@ -126,37 +128,40 @@ export class MapScene implements Scene {
     ];
 
     const w = 165;
-    const blurb = ui.font.wrap(def.blurb, w - 16);
+    const inner = ui.tipWidth(w);
+    const blurb = ui.font.wrap(def.blurb, inner);
     const lh = ui.font.lineHeight;
-    const goodsH = cols.length > 0 ? 34 + (prices ? 10 : 0) : 0;
-    const h = 14 + lh + blurb.length * lh + 6 + goodsH + (dealer ? 14 : 0) + notes.length * 12 + 4;
+    // a column's label, then its 16x16 icons (and prices under them)
+    const goodsH = cols.length > 0 ? ui.lh + 22 + (prices ? ui.lh - 2 : 0) : 0;
+    const h = 14 + lh + blurb.length * lh + 6 + goodsH + (dealer ? ui.lh + 2 : 0) + notes.length * ui.lh + 4;
     ui.tooltip(w, h, (x, y) => {
       ui.text(def.name, x, y, C.gold);
       blurb.forEach((l, i) => ui.text(l, x, y + lh + i * lh, C.muted));
       let ry = y + lh + blurb.length * lh + 6;
-      // one column per side, label centred above its row of 16x16 icons
-      const colW = (w - 16) / cols.length;
+      // one column per side, label centred above its row of 16x16 icons (on mobile's wide sheet,
+      // columns as wide as the desktop tooltip's, from the left)
+      const colW = (isMobile ? 165 - 16 : inner) / cols.length;
       cols.forEach((c, i) => {
         const cx = x + colW * (i + 0.5);
         ui.text(c.label, cx, ry, c.color, { align: 'center' });
-        const pitch = prices ? 22 : 18;
+        const pitch = prices ? (isMobile ? 26 : 22) : 18;
         const iw = c.goods.length * pitch - (pitch - 16);
         c.goods.forEach((g, j) => {
           const gx = cx - iw / 2 + j * pitch;
-          ui.image(data.goods[g.good].iconMedium, gx, ry + 12);
+          ui.image(data.goods[g.good].iconMedium, gx, ry + ui.lh);
           if (!prices) return;
           const o = offer(run, g.actorId, g.good);
           const p = c.role === 'supplier' ? buyPrice(run, o) : nextSellPrice(run, o, g.good);
-          ui.text(`$${p}`, gx + 8, ry + 30, TIER_COLOR[o.tier], { align: 'center' });
+          ui.text(`$${p}`, gx + 8, ry + ui.lh + 18, TIER_COLOR[o.tier], { align: 'center' });
         });
       });
       ry += goodsH;
       if (dealer) {
-        ui.image('assets/ui/icon_star.png', x - 2, ry - 2);
+        ui.image('assets/ui/icon_star.png', x - 2, ry - 2 + Math.floor((ui.lh - 12) / 2));
         ui.text(`${data.dealer.name} is here!`, x + 16, ry + 2, C.gold);
-        ry += 14;
+        ry += ui.lh + 2;
       }
-      notes.forEach((n, i) => ui.text(n.text, x, ry + 2 + i * 12, n.color));
+      notes.forEach((n, i) => ui.text(n.text, x, ry + 2 + i * ui.lh, n.color));
     }, actions);
   }
 }

@@ -1,4 +1,5 @@
 import type { App, Scene } from '../app';
+import { isMobile } from '../engine/device';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type Ui } from '../engine/ui';
 import { daysLeft } from '../game/run';
@@ -6,7 +7,7 @@ import type { ActorDef, Role, RunState, Weather, WeatherSpots } from '../game/ty
 import { PauseMenu } from './pause';
 import { StampsDialog } from './stamps';
 
-export const HUD_H = 30;
+export const HUD_H = isMobile ? 36 : 30;
 /** Star gold that still reads on the paper panel. */
 export const STAR_INK = '#b8761c';
 
@@ -280,19 +281,21 @@ export function drawHud(app: App, ui: Ui): void {
     app.sfx.play('lastDay');
   }
   ui.nine('panel_dark', { x: -8, y: -8, w: W + 16, h: HUD_H + 8 });
-  const ty = 11;
-  ui.image('assets/ui/icon_calendar.png', 8, 6);
+  // 16x16 icons, with the text centred on them
+  const iy = isMobile ? 9 : 6;
+  const ty = isMobile ? 12 : 11;
+  ui.image('assets/ui/icon_calendar.png', 8, iy);
   ui.text(`Day ${run.day}`, 28, ty, C.cream);
-  ui.image('assets/ui/icon_coin.png', 88, 6);
+  ui.image('assets/ui/icon_coin.png', 88, iy);
   ui.text(`$${run.cash}`, 108, ty, C.gold);
-  ui.image('assets/ui/icon_bag.png', 158, 6);
+  ui.image('assets/ui/icon_bag.png', 158, iy);
   ui.text(`${run.inventory.length}/${run.capacity}`, 178, ty, C.cream);
-  ui.image('assets/ui/icon_star.png', 216, 6);
+  ui.image('assets/ui/icon_star.png', 216, iy);
   ui.text(`${run.stars}`, 236, ty, C.gold);
 
   const q = run.quota;
   const qx = 262;
-  ui.image('assets/ui/icon_flag.png', qx, 6);
+  ui.image('assets/ui/icon_flag.png', qx, iy);
   const label = `Quota $${q.amount} by Day ${q.dueDay}`;
   ui.text(label, qx + 20, ty, C.cream);
   const sx = qx + 26 + ui.font.measure(label);
@@ -301,11 +304,14 @@ export function drawHud(app: App, ui: Ui): void {
   const txt = left <= 0 ? 'due today!' : left === 1 ? '1 day left' : `${left} days left`;
   ui.text(txt, sx, ty, left <= 1 ? C.redLight : C.muted);
 
-  if (ui.button({ x: W - 134, y: 5, w: 62, h: 20 }, 'Stamps')) {
+  // bigger on touch screens, for fingers
+  const stamps = isMobile ? { x: W - 150, y: 4, w: 72, h: 28 } : { x: W - 134, y: 5, w: 62, h: 20 };
+  const menu = isMobile ? { x: W - 72, y: 4, w: 66, h: 28 } : { x: W - 66, y: 5, w: 60, h: 20 };
+  if (ui.button(stamps, 'Stamps')) {
     app.sfx.play('open');
     app.push(new StampsDialog(app));
   }
-  if (ui.button({ x: W - 66, y: 5, w: 60, h: 20 }, 'Menu') || ui.key('Escape')) {
+  if (ui.button(menu, 'Menu') || ui.key('Escape')) {
     app.push(new PauseMenu(app));
   }
 }
@@ -332,9 +338,9 @@ export function drawBag(app: App, ui: Ui, x: number, y: number): void {
     if (hot) {
       const paid = `Paid $${item.paid} on Day ${item.day}`;
       const w2 = Math.max(ui.font.measure(def.name), ui.font.measure(paid)) + 16;
-      ui.tooltip(w2, 36, (tx, ty) => {
+      ui.tooltip(w2, 12 + 2 * ui.lh, (tx, ty) => {
         ui.text(def.name, tx, ty + 1, C.cream);
-        ui.text(paid, tx, ty + 13, C.gold);
+        ui.text(paid, tx, ty + 1 + ui.lh, C.gold);
       });
     }
   }
@@ -353,24 +359,26 @@ export class Confirm implements Scene {
 
   frame(ui: Ui): void {
     ui.dim(0.55);
-    const w = 320;
+    // where the body starts, and the button row's height and the space it takes at the bottom
+    const L = isMobile ? { w: 400, body: 50, btnH: 30, foot: 42 } : { w: 320, body: 44, btnH: 24, foot: 36 };
+    const w = L.w;
     const lines = ui.font.wrap(this.body, w - 40);
-    const h = 96 + lines.length * ui.font.lineHeight;
+    const h = L.body + 16 + L.foot + lines.length * ui.font.lineHeight;
     const r = { x: (W - w) / 2, y: (H - h) / 2, w, h };
     ui.nine('panel', r);
     ui.text(this.title, W / 2, r.y + 16, C.ink, { align: 'center', scale: 2 });
-    lines.forEach((l, i) => ui.text(l, W / 2, r.y + 44 + i * ui.font.lineHeight, C.inkSoft, { align: 'center' }));
-    const by = r.y + h - 36;
-    if (ui.button({ x: W / 2 - 110, y: by, w: 100, h: 24 }, this.no) || ui.key('Escape')) this.app.pop(this);
-    if (ui.button({ x: W / 2 + 10, y: by, w: 100, h: 24 }, this.yes)) {
+    lines.forEach((l, i) => ui.text(l, W / 2, r.y + L.body + i * ui.font.lineHeight, C.inkSoft, { align: 'center' }));
+    const by = r.y + h - L.foot;
+    if (ui.button({ x: W / 2 - 110, y: by, w: 100, h: L.btnH }, this.no) || ui.key('Escape')) this.app.pop(this);
+    if (ui.button({ x: W / 2 + 10, y: by, w: 100, h: L.btnH }, this.yes)) {
       this.app.pop(this);
       this.onYes();
     }
   }
 }
 
-/** The run's stats as a two-column table centred on `cx`, one row per 13px from `y`. Returns
- *  the y below it. */
+/** The run's stats as a two-column table centred on `cx`, one row per 13px (18 on mobile) from
+ *  `y`. Returns the y below it. */
 export function drawRunStats(ui: Ui, run: RunState, cx: number, y: number): number {
   const s = run.stats;
   const avg = s.sold > 0 ? (s.profit ?? 0) / s.sold : 0;
@@ -382,9 +390,10 @@ export function drawRunStats(ui: Ui, run: RunState, cx: number, y: number): numb
     ['Total losses', `$${s.losses ?? 0}`],
     ['Best day sales', `$${s.bestDaySales ?? 0}`],
   ];
+  const step = ui.lh + 1;
   rows.forEach(([k, v], i) => {
-    ui.text(k, cx - 90, y + i * 13, C.inkSoft);
-    ui.text(v, cx + 90, y + i * 13, C.ink, { align: 'right' });
+    ui.text(k, cx - 90, y + i * step, C.inkSoft);
+    ui.text(v, cx + 90, y + i * step, C.ink, { align: 'right' });
   });
-  return y + rows.length * 13;
+  return y + rows.length * step;
 }

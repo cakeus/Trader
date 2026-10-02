@@ -1,4 +1,5 @@
 import type { App, Scene } from '../app';
+import { isMobile } from '../engine/device';
 import { H, W } from '../engine/screen';
 import { C, type Rect, type TipAction, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
@@ -26,7 +27,13 @@ const DEAL_LABEL: Record<Tier, { text: string; color: string } | undefined> = {
 };
 
 export const CARD_W = 108;
-export const CARD_H = 104;
+/** Taller on mobile, for two lines of a name in the big font. */
+export const CARD_H = isMobile ? 108 : 104;
+/** Where a card's name starts, and its line pitch. */
+const NAME_Y = isMobile ? 75 : 76;
+const NAME_LH = isMobile ? 14 : 11;
+/** On mobile, a good's tooltip lines wrap into another column after this many. */
+const MOBILE_TIP_LINES = 4;
 /** Seconds with nothing left to do before the End Day button starts glowing. */
 const NUDGE_AFTER = 5;
 
@@ -44,8 +51,9 @@ export class LocationScene implements Scene {
     drawWeather(ui, weatherOn(app.data, run.area, run.day), def);
 
     const nw = ui.font.measure(def.name, 2) + 28;
-    ui.nine('panel_dark', { x: 8, y: HUD_H + 8, w: nw, h: 32 });
-    ui.text(def.name, 8 + nw / 2, HUD_H + 17, C.cream, { align: 'center', scale: 2 });
+    const nh = isMobile ? 36 : 32;
+    ui.nine('panel_dark', { x: 8, y: HUD_H + 8, w: nw, h: nh });
+    ui.text(def.name, 8 + nw / 2, HUD_H + 8 + Math.ceil((nh - ui.font.cap(2)) / 2), C.cream, { align: 'center', scale: 2 });
 
     actorsAt(run, this.locId).forEach((id, i) => {
       const actor = app.data.actors[id];
@@ -125,20 +133,22 @@ export class LocationScene implements Scene {
     ui.nine(hot ? 'row_hover' : 'panel', r);
     drawPortrait(ui, who, r.x + (CARD_W - 64) / 2, r.y + 8);
     const lines = ui.font.wrap(who.name, CARD_W - 12).slice(0, 2);
-    lines.forEach((l, j) => ui.text(l, r.x + CARD_W / 2, r.y + 76 + j * 11, C.ink, { align: 'center' }));
+    lines.forEach((l, j) => ui.text(l, r.x + CARD_W / 2, r.y + NAME_Y + j * NAME_LH, C.ink, { align: 'center' }));
 
     const tw = ui.font.measure(tag) + 14;
-    ui.nine('panel_dark', { x: r.x + (CARD_W - tw) / 2, y: r.y - 12, w: tw, h: 18 });
-    ui.text(tag, r.x + CARD_W / 2, r.y - 7, tagColor, { align: 'center' });
+    const th = isMobile ? 20 : 18;
+    const tag_: Rect = { x: r.x + (CARD_W - tw) / 2, y: r.y - th + 6, w: tw, h: th };
+    ui.nine('panel_dark', tag_);
+    ui.text(tag, r.x + CARD_W / 2, isMobile ? ui.vcenter(tag_.y, th) : r.y - 7, tagColor, { align: 'center' });
   }
 
   private dealerTooltip(ui: Ui, actions: TipAction[]): void {
     const { name } = this.app.data.dealer;
     const desc = 'Sell Stamps for Stars';
     const w = 16 + Math.max(ui.font.measure(name), ui.font.measure(desc));
-    ui.tooltip(w, 30, (x, y) => {
+    ui.tooltip(w, 6 + 2 * ui.lh, (x, y) => {
       ui.text(name, x, y, C.gold);
-      ui.text(desc, x, y + 12, C.muted);
+      ui.text(desc, x, y + ui.lh, C.muted);
     }, actions);
   }
 
@@ -209,24 +219,36 @@ export class LocationScene implements Scene {
         const shown = avg.toFixed(1).replace(/\.0$/, '');
         lines.push({ text: `Average paid: $${shown}`, color: C.gold });
       }
-      return { good: g.good, lines, h: Math.max(34, lines.length * 12 + 4) };
+      // on mobile's wide sheet, a good's lines go in columns of up to MOBILE_TIP_LINES
+      const cols = isMobile ? Math.ceil(lines.length / MOBILE_TIP_LINES) : 1;
+      const tall = Math.ceil(lines.length / cols);
+      return { good: g.good, lines, cols, h: Math.max(34, tall * ui.lh + 4) };
     });
 
     const lineW = (l: { text: string; suffix?: string }) =>
       ui.font.measure(l.text) + (l.suffix ? ui.font.measure(`  ${l.suffix}`) : 0);
     const w = Math.max(210, 52 + Math.max(...rows.flatMap((r) => r.lines.map(lineW))));
-    const h = 30 + rows.reduce((sum, r) => sum + r.h, 0);
+    // mobile puts "Sells" on the name's line
+    const head = isMobile ? ui.lh + 4 : 2 * ui.lh;
+    const h = 6 + head + rows.reduce((sum, r) => sum + r.h, 0);
     ui.tooltip(w, h, (x, y) => {
       ui.text(a.name, x, y, C.gold);
-      ui.text(seller ? 'Sells:' : 'Buys:', x, y + 12, C.muted);
-      let gy = y + 24;
+      if (isMobile) ui.text(seller ? 'Sells' : 'Buys', x + ui.font.measure(a.name) + 10, y, C.muted);
+      else ui.text(seller ? 'Sells:' : 'Buys:', x, y + ui.lh, C.muted);
+      let gy = y + head;
       for (const r of rows) {
         ui.image(data.goods[r.good].icon, x - 2, gy);
-        const ty = gy + Math.max(0, Math.floor((32 - r.lines.length * 12) / 2)) + 2;
-        r.lines.forEach((l, i) => {
-          ui.text(l.text, x + 36, ty + i * 12, l.color);
-          if (l.suffix) ui.text(l.suffix, x + 36 + ui.font.measure(`${l.text}  `), ty + i * 12, l.suffixColor ?? C.muted);
-        });
+        const tall = Math.ceil(r.lines.length / r.cols);
+        const ty = gy + Math.max(0, Math.floor((32 - tall * ui.lh) / 2)) + 2;
+        let cx = x + 36;
+        for (let c = 0; c < r.cols; c++) {
+          const col = r.lines.slice(c * tall, (c + 1) * tall);
+          col.forEach((l, i) => {
+            ui.text(l.text, cx, ty + i * ui.lh, l.color);
+            if (l.suffix) ui.text(l.suffix, cx + ui.font.measure(`${l.text}  `), ty + i * ui.lh, l.suffixColor ?? C.muted);
+          });
+          cx += Math.max(...col.map(lineW)) + 24;
+        }
         gy += r.h;
       }
     }, actions);
@@ -251,7 +273,7 @@ export class LocationScene implements Scene {
     }
     if (lines.length === 0) return;
     const w = 16 + Math.max(...lines.map((l) => ui.font.measure(l.text)));
-    ui.tooltip(w, 6 + lines.length * 12, (x, y) => lines.forEach((l, i) => ui.text(l.text, x, y + i * 12, l.color)));
+    ui.tooltip(w, 6 + lines.length * ui.lh, (x, y) => lines.forEach((l, i) => ui.text(l.text, x, y + i * ui.lh, l.color)));
   }
 
   /** Leave for a second location (the Detour stamp). */

@@ -1,5 +1,6 @@
 import type { App, Scene } from '../app';
 import { MUSIC_FADE } from '../engine/audio';
+import { isMobile } from '../engine/device';
 import { H, W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
 import { goodOf } from '../game/area';
@@ -122,26 +123,32 @@ export class AreaArrival implements Scene {
     const cats = Object.values(data.categories);
 
     ui.dim(0.55);
-    const w = 380;
+    const w = isMobile ? 460 : 380;
+    const btnH = isMobile ? 30 : 26;
+    // a category row's pitch
+    const step = isMobile ? 24 : 22;
     const blurb = ui.font.wrap(area.blurb, w - 40);
-    const h = 144 + blurb.length * 12 + cats.length * 22 + 44;
+    const h = 64 + blurb.length * ui.lh + 10 + (ui.lh + 6) + cats.length * step + 6 + (ui.lh + 4) + 48 + btnH;
     const r = { x: (W - w) / 2, y: (H - h) / 2, w, h };
     ui.nine('panel', r);
     ui.text('Welcome to', W / 2, r.y + 14, C.inkSoft, { align: 'center' });
     ui.text(area.name, W / 2, r.y + 28, C.ink, { align: 'center', scale: 3 });
     let y = r.y + 64;
-    blurb.forEach((l, i) => ui.text(l, W / 2, y + i * 12, C.inkSoft, { align: 'center' }));
-    y += blurb.length * 12 + 10;
+    blurb.forEach((l, i) => ui.text(l, W / 2, y + i * ui.lh, C.inkSoft, { align: 'center' }));
+    y += blurb.length * ui.lh + 10;
 
     ui.text('This area contains new items to trade.', W / 2, y, C.ink, { align: 'center' });
-    y += 18;
-    // one row per category: its good here
+    y += ui.lh + 6;
+    // one row per category: its good here (on mobile, the names right of a centred icon column)
+    const nameX = isMobile ? W / 2 - 30 - Math.max(...cats.map((c) => ui.font.measure(c.name))) : r.x + 100;
+    const iconX = isMobile ? W / 2 - 18 : r.x + 180;
     for (const c of cats) {
       const good = data.goods[goodOf(data, c.id, area.id)];
-      ui.text(c.name, r.x + 100, y + 4, C.inkSoft);
-      ui.image(good.iconMedium, r.x + 180, y);
-      ui.text(good.name, r.x + 200, y + 4, C.ink);
-      y += 22;
+      const ty = y + 8 - Math.ceil(ui.font.cap() / 2);
+      ui.text(c.name, nameX, ty, C.inkSoft);
+      ui.image(good.iconMedium, iconX, y);
+      ui.text(good.name, iconX + 20, ty, C.ink);
+      y += step;
     }
     y += 6;
     const bag =
@@ -149,10 +156,10 @@ export class AreaArrival implements Scene {
         ? `Your ${moved.units} leftover good${moved.units === 1 ? ' was' : 's were'} sold for $${moved.refund}.`
         : (area.welcome ?? 'Prices are higher here. Good luck!');
     ui.text(bag, W / 2, y, moved.units > 0 ? C.green : C.inkSoft, { align: 'center' });
-    y += 16;
+    y += ui.lh + 4;
     ui.text(`You now start each week with $${startingCash(data, run, area.id)}.`, W / 2, y, C.ink, { align: 'center' });
 
-    if (ui.button({ x: W / 2 - 60, y: r.y + h - 36, w: 120, h: 26 }, 'Onward!') || ui.key('Enter')) {
+    if (ui.button({ x: W / 2 - 60, y: r.y + h - btnH - 10, w: 120, h: btnH }, 'Onward!') || ui.key('Enter')) {
       run.moved = null;
       app.save();
       app.pop(this);

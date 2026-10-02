@@ -1,4 +1,5 @@
 import type { App, Scene } from '../app';
+import { isMobile } from '../engine/device';
 import { seedLabel } from '../engine/rng';
 import { W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
@@ -64,15 +65,17 @@ export class Victory implements Scene {
     ui.text('You win!', W / 2, r.y + 16, C.gold, { align: 'center', scale: 3 });
     ui.text(`You met every quota through Day ${run.day}.`, cx, r.y + 56, C.ink, { align: 'center' });
     ui.text(`Final cash $${run.cash}`, cx, r.y + 76, C.ink, { align: 'center', scale: 2 });
+    // mobile's scale-2 text is the big font's, so the lines under it move down
+    const d = isMobile ? 8 : 0;
     if (this.isNew) {
-      ui.text('New high score!', cx, r.y + 100 + bob, C.gold, { align: 'center', scale: 2 });
-      if (this.best !== null) ui.text(`Previous best $${this.best}`, cx, r.y + 122, C.inkSoft, { align: 'center' });
+      ui.text('New high score!', cx, r.y + 100 + d + bob, C.gold, { align: 'center', scale: 2 });
+      if (this.best !== null) ui.text(`Previous best $${this.best}`, cx, r.y + 122 + 2 * d, C.inkSoft, { align: 'center' });
     } else {
-      ui.text(`High score $${this.best}`, cx, r.y + 104, C.inkSoft, { align: 'center' });
+      ui.text(`High score $${this.best}`, cx, r.y + 104 + d, C.inkSoft, { align: 'center' });
     }
-    const y = drawRunStats(ui, run, cx, r.y + 144);
+    const y = drawRunStats(ui, run, cx, r.y + 144 + 2 * d);
     ui.text(`Seed ${seedLabel(run.seed)}`, cx, y + 8, C.muted, { align: 'center' });
     endStamps(app, ui, run, r);
-    endButtons(app, ui, r.y + r.h - 40);
+    endButtons(app, ui, r);
   }
 }

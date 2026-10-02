@@ -52,8 +52,9 @@ export interface TipAction {
 const CORNER = 8;
 const TIP_BTN_H = isMobile ? 30 : 22;
 /** Mobile tooltips are a sheet across the screen, docked at the bottom, or at this y (under the
- *  HUD) when the item tapped is in the bottom half. */
+ *  HUD) when the item tapped is low on the screen (its middle below `SHEET_FLIP` of the height). */
 const SHEET_TOP = 44;
+const SHEET_FLIP = 0.6;
 const TOAST_H = isMobile ? 38 : 30;
 /** How long a big centre-screen announcement stays up, in seconds. */
 const ANNOUNCE_T = 2.2;
@@ -185,6 +186,11 @@ export class Ui {
     this.font.draw(this.ctx, s, x, y, color, opts);
   }
 
+  /** How wide a tooltip asked to be `w` wide has inside for its body (the mobile sheet is wider). */
+  tipWidth(w: number): number {
+    return this.touch ? W - 36 : w - 16;
+  }
+
   /** The y to draw text at `scale` so its capitals sit centred in a box at `y`, `h` tall. */
   vcenter(y: number, h: number, scale = 1): number {
     return y + Math.floor((h - 1 - this.font.cap(scale)) / 2);
@@ -247,7 +253,7 @@ export class Ui {
     if (actions.length > 0) h += TIP_BTN_H + 8;
     // docked at the bottom, or at the top when the item is in the bottom half
     const x = 8;
-    const y = at.y + at.h / 2 < H / 2 ? H - h - 8 : SHEET_TOP;
+    const y = at.y + at.h / 2 < H * SHEET_FLIP ? H - h - 8 : SHEET_TOP;
     const r: Rect = { x, y, w, h };
     this.overlay(() => {
       this.nine('panel_dark', r);
