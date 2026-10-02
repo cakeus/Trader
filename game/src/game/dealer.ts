@@ -451,6 +451,6 @@ export function describeDeal(data: GameData, deal: DealerDeal, areaId: string): 
     case 'nestEgg':
       return { title: 'Nest Egg', body: `Start every week with $${d.nestEgg} more.` };
     case 'goldenGoose':
-      return { title: 'Golden Goose', body: 'Cash above each quota carries over into the next week.' };
+      return { title: 'Golden Goose', body: `Up to $${CONFIG.dealer.goldenGooseMax} of the cash above each quota carries over into the next week.` };
   }
 }

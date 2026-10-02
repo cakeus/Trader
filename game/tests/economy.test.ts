@@ -647,6 +647,17 @@ describe('quota', () => {
     expect(s.cash).toBe(bay + nestEgg);
   });
 
+  it('counts the days with a buy or sell', () => {
+    const s = newRun(data, 17);
+    endDay(data, s); // nothing traded
+    expect(s.stats.tradedDays).toBe(0);
+    s.boughtToday = true;
+    endDay(data, s);
+    s.soldToday = 1;
+    endDay(data, s);
+    expect(s.stats.tradedDays).toBe(2);
+  });
+
   it('Golden Goose carries the cash above each quota into the next week', () => {
     const s = newRun(data, 16);
     give(s, 'goldenGoose');
@@ -666,6 +677,14 @@ describe('quota', () => {
     endDay(data, s);
     expect(q2.rollover).toBeUndefined();
     expect(s.cash).toBe(bay + CONFIG.dealer.nestEgg);
+    // a big surplus carries over only up to the cap
+    while (s.day < s.quota.dueDay) endDay(data, s);
+    const q3 = s.quota;
+    const max = CONFIG.dealer.goldenGooseMax;
+    s.cash = q3.amount + max + 15;
+    endDay(data, s);
+    expect(q3.rollover).toBe(max);
+    expect(s.cash).toBe(startingCash(data, s, s.area) + max);
   });
 
   it('new day resets the visit and rerolls the market', () => {

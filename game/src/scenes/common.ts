@@ -375,7 +375,7 @@ export function drawRunStats(ui: Ui, run: RunState, cx: number, y: number): numb
   const s = run.stats;
   const avg = s.sold > 0 ? (s.profit ?? 0) / s.sold : 0;
   const rows = [
-    ['Days traded', `${run.day}`],
+    ['Days traded', `${s.tradedDays ?? 0}`],
     ['Quotas met', `${s.quotasMet}`],
     ['Goods sold', `${s.sold}`],
     ['Avg profit', `${avg < 0 ? '-' : ''}$${Math.abs(avg).toFixed(2)}`],

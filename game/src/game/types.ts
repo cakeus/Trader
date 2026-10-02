@@ -179,7 +179,7 @@ export interface Quota {
   finalCash?: number;
   bonusStars?: number;
   starsAwarded?: number;
-  /** Golden Goose: the cash above the quota carried into the next week. */
+  /** Golden Goose: the cash above the quota carried into the next week (capped at `goldenGooseMax`). */
   rollover?: number;
 }
 
@@ -201,6 +201,8 @@ export interface RunStats {
   /** Sales today, and the most made on a single day. */
   daySales?: number;
   bestDaySales?: number;
+  /** Days with at least one buy or sell (optional: older saves). */
+  tradedDays?: number;
 }
 
 export interface BagItem {

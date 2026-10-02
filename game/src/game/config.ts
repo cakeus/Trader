@@ -126,5 +126,7 @@ export const CONFIG = {
     cramazing: 1.5,
     /** Nest Egg: $ added to the starting cash every week. */
     nestEgg: 10,
+    /** Golden Goose: the most of the cash above a quota that carries into the next week. */
+    goldenGooseMax: 20,
   },
 };

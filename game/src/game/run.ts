@@ -60,7 +60,7 @@ export function newRun(data: GameData, seed: number): RunState {
     visited: null,
     market: {},
     deck: { supplier: 0, buyer: 0 },
-    stats: { bought: 0, sold: 0, quotasMet: 0, starsEarned: 0, profit: 0, losses: 0, daySales: 0, bestDaySales: 0 },
+    stats: { bought: 0, sold: 0, quotasMet: 0, starsEarned: 0, profit: 0, losses: 0, daySales: 0, bestDaySales: 0, tradedDays: 0 },
     stars: 0,
     perks: {
       discounts: {}, luck: {}, stock: {}, buyerStock: {},
@@ -620,6 +620,7 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
   let result: EndDayResult = 'next';
   const q = state.quota;
   const due = state.day >= q.dueDay;
+  if (tradedToday(state)) state.stats.tradedDays = (state.stats.tradedDays ?? 0) + 1;
   if (due) q.cashBefore = state.cash;
   // stamp payouts land before the quota is judged (and work on the bag before it's cashed out)
   const payout = payoutTotal(endOfDayPayouts(state));
@@ -647,8 +648,9 @@ export function endDay(data: GameData, state: RunState): EndDayResult {
     state.quota = quotaFor(q.index + 1);
     state.deck = { supplier: 0, buyer: 0 }; // a fresh tier deck for each quota
     // a new week starts from the starting cash of wherever it's spent, plus (with Golden Goose)
-    // whatever the week ended with above its quota
-    const rollover = has(state, 'goldenGoose') ? state.cash - q.amount : 0;
+    // whatever the week ended with above its quota (up to goldenGooseMax)
+    const rollover = has(state, 'goldenGoose')
+      ? Math.min(state.cash - q.amount, CONFIG.dealer.goldenGooseMax) : 0;
     if (rollover > 0) q.rollover = rollover;
     state.cash = startingCash(data, state, areaFor(data, state.day + 1)) + rollover;
     result = 'quotaPassed';
