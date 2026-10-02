@@ -1,5 +1,6 @@
 import type { App, Scene } from '../app';
 import type { SfxName } from '../engine/audio';
+import { isMobile } from '../engine/device';
 import { H, W } from '../engine/screen';
 import { C, type Ui } from '../engine/ui';
 import { CONFIG } from '../game/config';
@@ -13,6 +14,12 @@ const GAP = 0.25;
 /** Seconds a row takes to pop in. */
 const POP_T = 0.3;
 const STAR_GAP = 0.65;
+/** The panel's width; where the rows start and their steps (a money or star row, the total);
+ *  the footer's height (its lines, the button); and the button's height. Mobile's scale-2 text is
+ *  the big font's, so its rows are further apart. On desktop the panel is a fixed `h` tall. */
+const L = isMobile
+  ? { w: 440, h: 0, rows: 66, step: 28, totalStep: 34, foot: 100, btnH: 30 }
+  : { w: 360, h: 340, rows: 66, step: 20, totalStep: 28, foot: 76, btnH: 26 };
 
 /** One line of the tally, shown from `at` seconds in. */
 interface Row {
@@ -104,8 +111,8 @@ export class QuotaResult implements Scene {
     this.playSounds(e);
 
     ui.dim(0.55);
-    const w = 360;
-    const h = 340;
+    const w = L.w;
+    const h = L.h || this.rowsHeight() + L.rows + L.foot;
     const r = { x: (W - w) / 2, y: (H - h) / 2, w, h };
     ui.nine('panel', r);
 
@@ -122,7 +129,7 @@ export class QuotaResult implements Scene {
 
     const lx = r.x + 40;
     const rx = r.x + w - 40;
-    let y = r.y + 66;
+    let y = r.y + L.rows;
     for (const row of this.rows) {
       if (row.gap) y += 8;
       if (row.rule) {
@@ -133,19 +140,26 @@ export class QuotaResult implements Scene {
         y += 6;
       }
       if (e >= row.at) this.drawRow(ui, row, e, lx, rx, y);
-      y += row.total !== undefined ? 28 : 20;
+      y += row.total !== undefined ? L.totalStep : L.step;
     }
 
     if (e >= this.done && !skipping) {
-      const fy = r.y + h - 76;
+      const half = Math.round((ui.font.lineHeight + 5) / 2);
+      // mobile's footer starts just under the rows
+      const fy = isMobile ? r.y + h - L.foot + 6 + half : r.y + h - L.foot;
       if (this.passed.rollover)
-        ui.text(`Golden Goose carries $${this.passed.rollover} into next week.`, W / 2, fy - 8, C.gold, { align: 'center' });
-      ui.text(`You have ${run.stars} star${run.stars === 1 ? '' : 's'}.`, W / 2, fy + 8, C.inkSoft, { align: 'center' });
-      if (ui.button({ x: W / 2 - 60, y: r.y + h - 40, w: 120, h: 26 }, this.opts.button ?? 'Onward!') || ui.key('Enter')) {
+        ui.text(`Golden Goose carries $${this.passed.rollover} into next week.`, W / 2, fy - half, C.gold, { align: 'center' });
+      ui.text(`You have ${run.stars} star${run.stars === 1 ? '' : 's'}.`, W / 2, fy + half, C.inkSoft, { align: 'center' });
+      if (ui.button({ x: W / 2 - 60, y: r.y + h - L.btnH - 14, w: 120, h: L.btnH }, this.opts.button ?? 'Onward!') || ui.key('Enter')) {
         app.pop(this);
         this.opts.onDone?.();
       }
     }
+  }
+
+  /** How tall the rows are, with their gaps and rules. */
+  private rowsHeight(): number {
+    return this.rows.reduce((sum, row) => sum + (row.gap ? 8 : 0) + (row.rule ? 6 : 0) + (row.total !== undefined ? L.totalStep : L.step), 0);
   }
 
   private drawRow(ui: Ui, row: Row, e: number, lx: number, rx: number, y: number): void {
@@ -165,8 +179,9 @@ export class QuotaResult implements Scene {
       }
       stars = k;
     }
+    // mobile's big scale-2 text is as tall as the scale-3 total, so it sits at the same y
     if (row.total !== undefined) {
-      ui.text(label, lx, y + 7, C.ink, { scale: 2 });
+      ui.text(label, lx, isMobile ? y + 1 : y + 7, C.ink, { scale: 2 });
       this.scaled(ui, pop(age / POP_T), rx - 12, y + 10, () => {
         ui.text(`${row.total}`, rx - 28, y, STAR_INK, { align: 'right', scale: 3 });
         ui.image('assets/ui/icon_star24.png', rx - 24, y - 2);
@@ -174,7 +189,8 @@ export class QuotaResult implements Scene {
       ui.ctx.restore();
       return;
     }
-    ui.text(label, lx, y + 4, faded ? C.muted : C.inkSoft);
+    // the label centred on the scale-2 numbers
+    ui.text(label, lx, y + Math.round((ui.font.cap(2) - ui.font.cap()) / 2), faded ? C.muted : C.inkSoft);
     if (row.money) {
       const m = row.money;
       const p = m.dur === 0 ? 1 : Math.min(1, age / m.dur);
@@ -189,7 +205,7 @@ export class QuotaResult implements Scene {
       this.scaled(ui, s, rx - 8, y + 7, () => {
         ui.text(text, rx - 20, y, faded ? C.muted : STAR_INK, { align: 'right', scale: 2 });
         if (faded) ui.ctx.globalAlpha *= 0.4;
-        ui.image('assets/ui/icon_star16.png', rx - 16, y - 2);
+        ui.image('assets/ui/icon_star16.png', rx - 16, y - 2 + Math.round((ui.font.cap(2) - 14) / 2));
       });
     }
     ui.ctx.restore();

@@ -3,12 +3,7 @@
 Each glyph is up to 9 rows: rows 0-6 sit on the baseline, rows 7-8 are
 descenders. The game tints the white atlas per color and adds 1px spacing.
 """
-import json
-import os
-
-from PIL import Image
-
-from pixelkit import ASSETS, PREVIEWS
+from fontkit import build_font
 
 G = {}
 
@@ -112,39 +107,4 @@ glyph("✓", [".....", ".....", "....#", "...#.", "#.#..", ".#...", "....."])  #
 glyph("♥", [".....", ".#.#.", "#####", "#####", ".###.", "..#..", "....."])  # heart
 glyph("…", [".....", ".....", ".....", ".....", ".....", ".....", "#.#.#"])  # ellipsis
 
-H = 9
-ORDER = list(G.keys())
-widths = {ch: max(len(r) for r in G[ch]) for ch in ORDER}
-atlas_w = sum(widths.values()) + len(ORDER)
-img = Image.new("RGBA", (atlas_w, H), (0, 0, 0, 0))
-meta = {"height": H, "baseline": 7, "lineHeight": 11, "spacing": 1, "glyphs": {}}
-x = 0
-for ch in ORDER:
-    rows = G[ch]
-    assert all(len(r) == widths[ch] for r in rows), f"ragged glyph {ch!r}"
-    for y, row in enumerate(rows):
-        for dx, c in enumerate(row):
-            if c == "#":
-                img.putpixel((x + dx, y), (255, 255, 255, 255))
-    meta["glyphs"][ch] = {"x": x, "w": widths[ch]}
-    x += widths[ch] + 1
-
-out = os.path.join(ASSETS, "font")
-os.makedirs(out, exist_ok=True)
-img.save(os.path.join(out, "font.png"))
-with open(os.path.join(out, "font.json"), "w", encoding="utf-8") as f:
-    json.dump(meta, f, ensure_ascii=False)
-
-# preview: sample text rendered at 4x on a dark background
-sample = ["The Quick Brown Fox jumps!", "over the lazy dog? $25 by Day 7", "0123456789 +-=/%() ✓♥"]
-pv = Image.new("RGBA", (220, 12 * len(sample) + 4), (40, 32, 56, 255))
-for li, line in enumerate(sample):
-    cx = 2
-    for ch in line:
-        g = meta["glyphs"][ch]
-        glyph_img = img.crop((g["x"], 0, g["x"] + g["w"], H))
-        pv.alpha_composite(glyph_img, (cx, 2 + li * 12))
-        cx += g["w"] + 1
-os.makedirs(PREVIEWS, exist_ok=True)
-pv.resize((pv.width * 4, pv.height * 4), Image.NEAREST).save(os.path.join(PREVIEWS, "font_preview.png"))
-print(f"font: {len(ORDER)} glyphs, atlas {img.size}")
+build_font(G, "font", height=9, baseline=7, line_height=11)
