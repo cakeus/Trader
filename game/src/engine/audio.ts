@@ -69,6 +69,10 @@ interface Track {
   level: number;
   /** Seconds this track's current fade (in or out) takes. */
   fade: number;
+  /** Its volume through WebAudio, once there's a context (iOS ignores `el.volume`). */
+  gain?: GainNode;
+  /** Routing it through WebAudio failed (it then uses `el.volume`). */
+  unrouted?: boolean;
 }
 
 /** Tiny procedural chiptune blips via WebAudio, plus looping background music. */
@@ -135,7 +139,25 @@ export class Sfx {
     for (const t of this.fading) t.level = Math.max(0, t.level - d / t.fade);
     for (const t of this.fading.filter((f) => f.level <= 0)) t.el.pause();
     this.fading = this.fading.filter((f) => f.level > 0);
-    for (const t of this.tracks()) t.el.volume = Math.min(1, Math.max(0, t.level * MUSIC_VOLUME));
+    for (const t of this.tracks()) this.setVolume(t, Math.min(1, Math.max(0, t.level * MUSIC_VOLUME)));
+  }
+
+  /** iOS Safari ignores `<audio>` volume (the music played at full volume, over the effects), so
+   *  once there's an AudioContext each track goes through a gain node instead. */
+  private setVolume(t: Track, v: number): void {
+    if (!t.gain && !t.unrouted && this.ctx) {
+      try {
+        const gain = this.ctx.createGain();
+        this.ctx.createMediaElementSource(t.el).connect(gain).connect(this.ctx.destination);
+        t.gain = gain;
+        t.el.volume = 1;
+      } catch {
+        // no WebAudio routing: fall back to the element's own volume
+        t.unrouted = true;
+      }
+    }
+    if (t.gain) t.gain.gain.value = v;
+    else t.el.volume = v;
   }
 
   /** Pause everything while the page is hidden (mobile browsers otherwise keep `<audio>` playing
