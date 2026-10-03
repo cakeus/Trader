@@ -162,16 +162,27 @@ export class Sfx {
     t.el.play().catch(() => {});
   }
 
-  /** Browsers only allow audio after a user gesture. */
+  /** Browsers only allow audio after a user gesture (called on every tap, click and key). */
   unlock(): void {
     if (!this.ctx) {
+      // iOS Safari plays WebAudio as "ambient" sound, which the silent switch mutes (the music's
+      // <audio> isn't); a "playback" session plays the effects like the music (Safari 16.4+)
+      const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+      if (session) {
+        try {
+          session.type = 'playback';
+        } catch {
+          // not allowed here; the effects just follow the silent switch
+        }
+      }
       try {
         this.ctx = new AudioContext();
       } catch {
         return;
       }
     }
-    if (this.ctx.state === 'suspended' && !this._hidden) void this.ctx.resume();
+    // iOS leaves the context 'interrupted' (not 'suspended') after a call, Siri or an app switch
+    if (this.ctx.state !== 'running' && !this._hidden) void this.ctx.resume();
     if (this.track) this.start(this.track);
   }
 

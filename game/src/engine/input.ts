@@ -43,6 +43,8 @@ export class Input {
       this.down = false;
       this.released = true;
     });
+    // iOS only counts some events as a gesture that may start audio: touchend is the surest
+    c.addEventListener('touchend', () => onFirstGesture(), { passive: true });
     c.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('keydown', (e) => {
       onFirstGesture();
