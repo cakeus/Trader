@@ -128,31 +128,34 @@ export class MapScene implements Scene {
     ];
 
     const w = 165;
-    const inner = ui.tipWidth(w);
+    // on touch screens it docks in the area's corner, half the screen wide
+    const dock = this.app.data.areas[run.area].tipCorner ?? 'topRight';
+    const inner = ui.tipWidth(w, dock);
     const blurb = ui.font.wrap(def.blurb, inner);
     const lh = ui.font.lineHeight;
-    // a column's label, then its 16x16 icons (and prices under them)
-    const goodsH = cols.length > 0 ? ui.lh + 22 + (prices ? ui.lh - 2 : 0) : 0;
+    // a column's label, then its icons (16x16, 32x32 on mobile) and prices under them
+    const icon = isMobile ? 32 : 16;
+    const goodsH = cols.length > 0 ? ui.lh + icon + 6 + (prices ? ui.lh - 2 : 0) : 0;
     const h = 14 + lh + blurb.length * lh + 6 + goodsH + (dealer ? ui.lh + 2 : 0) + notes.length * ui.lh + 4;
     ui.tooltip(w, h, (x, y) => {
       ui.text(def.name, x, y, C.gold);
       blurb.forEach((l, i) => ui.text(l, x, y + lh + i * lh, C.muted));
       let ry = y + lh + blurb.length * lh + 6;
-      // one column per side, label centred above its row of 16x16 icons (on mobile's wide sheet,
-      // columns as wide as the desktop tooltip's, from the left)
-      const colW = (isMobile ? 165 - 16 : inner) / cols.length;
+      // one column per side, label centred above its row of icons
+      const colW = inner / cols.length;
       cols.forEach((c, i) => {
         const cx = x + colW * (i + 0.5);
         ui.text(c.label, cx, ry, c.color, { align: 'center' });
-        const pitch = prices ? (isMobile ? 26 : 22) : 18;
-        const iw = c.goods.length * pitch - (pitch - 16);
+        const pitch = icon + (prices ? 6 : 2);
+        const iw = c.goods.length * pitch - (pitch - icon);
         c.goods.forEach((g, j) => {
           const gx = cx - iw / 2 + j * pitch;
-          ui.image(data.goods[g.good].iconMedium, gx, ry + ui.lh);
+          const def = data.goods[g.good];
+          ui.image(isMobile ? def.icon : def.iconMedium, gx, ry + ui.lh);
           if (!prices) return;
           const o = offer(run, g.actorId, g.good);
           const p = c.role === 'supplier' ? buyPrice(run, o) : nextSellPrice(run, o, g.good);
-          ui.text(`$${p}`, gx + 8, ry + ui.lh + 18, TIER_COLOR[o.tier], { align: 'center' });
+          ui.text(`$${p}`, gx + icon / 2, ry + ui.lh + icon + 2, TIER_COLOR[o.tier], { align: 'center' });
         });
       });
       ry += goodsH;
@@ -162,6 +165,6 @@ export class MapScene implements Scene {
         ry += ui.lh + 2;
       }
       notes.forEach((n, i) => ui.text(n.text, x, ry + 2 + i * ui.lh, n.color));
-    }, actions);
+    }, actions, dock);
   }
 }
