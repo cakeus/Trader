@@ -1,3 +1,5 @@
+import { isMobile } from './device';
+
 export type SfxName = 'click' | 'open' | 'buy' | 'sell' | 'deny' | 'day' | 'quota' | 'fail' | 'lastDay' | 'tick' | 'star';
 
 interface Note {
@@ -61,26 +63,38 @@ const SFX: Record<SfxName, Note[]> = {
 const MUSIC_VOLUME = 0.1;
 /** Seconds to fade one track out and the next in. */
 export const MUSIC_FADE = 1.5;
+/** Mobile decodes the music at this sample rate, so a 3-minute track takes about 45MB instead of
+ *  70MB (desktop decodes at the context's rate). */
+const MOBILE_MUSIC_RATE = 32000;
 
 interface Track {
   src: string;
-  el: HTMLAudioElement;
   /** Fade level 0..1, times MUSIC_VOLUME. */
   level: number;
   /** Seconds this track's current fade (in or out) takes. */
   fade: number;
-  /** Its volume through WebAudio, once there's a context (iOS ignores `el.volume`). */
+  /** The decoded track, once loaded. */
+  buffer?: AudioBuffer;
+  loading?: boolean;
+  /** Loading or decoding it failed (it stays silent). */
+  failed?: boolean;
   gain?: GainNode;
-  /** Routing it through WebAudio failed (it then uses `el.volume`). */
-  unrouted?: boolean;
+  /** The playing (looping) source; none while paused or loading. */
+  node?: AudioBufferSourceNode;
+  /** Seconds into the track: where a paused track picks up. */
+  pos: number;
+  /** Context time the track's start would have been, while it plays. */
+  startedAt: number;
 }
 
-/** Tiny procedural chiptune blips via WebAudio, plus looping background music. */
+/** Tiny procedural chiptune blips via WebAudio, plus looping background music. The music is
+ *  decoded and played through WebAudio too, not an `<audio>` element: iOS plays those as media
+ *  at the phone's media volume and ignores their `volume`, so the music drowned out the effects. */
 export class Sfx {
   private ctx: AudioContext | null = null;
   private _muted = false;
   private _musicMuted = false;
-  /** The page is in the background (music paused until it's back). */
+  /** The page is in the background (everything paused until it's back). */
   private _hidden = false;
   /** The track that should be playing, and any still fading out. */
   private track: Track | null = null;
@@ -103,7 +117,7 @@ export class Sfx {
   set musicMuted(m: boolean) {
     this._musicMuted = m;
     for (const t of this.tracks()) {
-      if (m) t.el.pause();
+      if (m) this.stop(t);
       else this.start(t);
     }
   }
@@ -120,14 +134,7 @@ export class Sfx {
     }
     if (src === null) return;
     const back = this.fading.findIndex((t) => t.src === src);
-    if (back >= 0) {
-      this.track = this.fading.splice(back, 1)[0];
-    } else {
-      const el = new Audio(encodeURI(src));
-      el.loop = true;
-      el.volume = 0;
-      this.track = { src, el, level: 0, fade };
-    }
+    this.track = back >= 0 ? this.fading.splice(back, 1)[0] : { src, level: 0, fade, pos: 0, startedAt: 0 };
     this.track.fade = fade;
     this.start(this.track);
   }
@@ -135,53 +142,95 @@ export class Sfx {
   /** Advance the music fades (call once a frame). */
   update(dt: number): void {
     const d = Math.max(0, dt); // the first frame's dt can be slightly negative
-    if (this.track) this.track.level = Math.min(1, this.track.level + d / this.track.fade);
+    // the new track fades in once it's actually playing (it may still be loading)
+    if (this.track?.node) this.track.level = Math.min(1, this.track.level + d / this.track.fade);
     for (const t of this.fading) t.level = Math.max(0, t.level - d / t.fade);
-    for (const t of this.fading.filter((f) => f.level <= 0)) t.el.pause();
+    for (const t of this.fading.filter((f) => f.level <= 0)) this.drop(t);
     this.fading = this.fading.filter((f) => f.level > 0);
-    for (const t of this.tracks()) this.setVolume(t, Math.min(1, Math.max(0, t.level * MUSIC_VOLUME)));
+    for (const t of this.tracks()) if (t.gain) t.gain.gain.value = Math.min(1, Math.max(0, t.level * MUSIC_VOLUME));
   }
 
-  /** iOS Safari ignores `<audio>` volume (the music played at full volume, over the effects), so
-   *  once there's an AudioContext each track goes through a gain node instead. */
-  private setVolume(t: Track, v: number): void {
-    if (!t.gain && !t.unrouted && this.ctx) {
-      try {
-        const gain = this.ctx.createGain();
-        this.ctx.createMediaElementSource(t.el).connect(gain).connect(this.ctx.destination);
-        t.gain = gain;
-        t.el.volume = 1;
-      } catch {
-        // no WebAudio routing: fall back to the element's own volume
-        t.unrouted = true;
-      }
-    }
-    if (t.gain) t.gain.gain.value = v;
-    else t.el.volume = v;
-  }
-
-  /** Pause everything while the page is hidden (mobile browsers otherwise keep `<audio>` playing
-   *  in the background), and pick it back up when it returns. */
+  /** Pause everything while the page is hidden (suspending the context pauses the music too),
+   *  and pick it back up when it returns. */
   set hidden(h: boolean) {
     if (this._hidden === h) return;
     this._hidden = h;
-    for (const t of this.tracks()) {
-      if (h) t.el.pause();
-      else this.start(t);
-    }
     if (!this.ctx) return;
     if (h) void this.ctx.suspend();
-    else void this.ctx.resume();
+    else {
+      void this.ctx.resume();
+      if (this.track) this.start(this.track);
+    }
   }
 
   private tracks(): Track[] {
     return this.track ? [this.track, ...this.fading] : [...this.fading];
   }
 
-  /** Play a track unless the music is off; browsers refuse before the first user gesture, so unlock retries. */
+  /** Fetch and decode a track (once there's a context), then start it. */
+  private load(t: Track): void {
+    const ctx = this.ctx;
+    if (!ctx || t.buffer || t.loading || t.failed) return;
+    t.loading = true;
+    // mobile decodes at a lower rate to save memory; the context resamples it as it plays
+    const decoder: BaseAudioContext = isMobile ? new OfflineAudioContext(2, 1, MOBILE_MUSIC_RATE) : ctx;
+    fetch(encodeURI(t.src))
+      .then((r) => {
+        if (!r.ok) throw new Error(`${t.src}: ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then((data) => new Promise<AudioBuffer>((ok, fail) => decoder.decodeAudioData(data, ok, fail)))
+      .then((buffer) => {
+        t.buffer = buffer;
+        t.loading = false;
+        // still wanted? (it may have faded out, or another track come in, while it loaded)
+        if (this.tracks().includes(t)) this.start(t);
+      })
+      .catch(() => {
+        t.loading = false;
+        t.failed = true;
+      });
+  }
+
+  /** Play a track (from where it paused) unless the music is off or the page hidden; before the
+   *  first user gesture there's no context yet, so unlock retries. */
   private start(t: Track): void {
-    if (this._musicMuted || this._hidden || !t.el.paused) return;
-    t.el.play().catch(() => {});
+    const ctx = this.ctx;
+    if (!ctx || this._musicMuted || this._hidden || t.node) return;
+    if (!t.buffer) {
+      this.load(t);
+      return;
+    }
+    if (!t.gain) {
+      t.gain = ctx.createGain();
+      t.gain.gain.value = t.level * MUSIC_VOLUME;
+      t.gain.connect(ctx.destination);
+    }
+    const node = ctx.createBufferSource();
+    node.buffer = t.buffer;
+    node.loop = true;
+    node.connect(t.gain);
+    const pos = t.pos % t.buffer.duration;
+    node.start(0, pos);
+    t.node = node;
+    t.startedAt = ctx.currentTime - pos;
+  }
+
+  /** Pause a track, remembering where. */
+  private stop(t: Track): void {
+    if (!t.node || !this.ctx || !t.buffer) return;
+    t.pos = (this.ctx.currentTime - t.startedAt) % t.buffer.duration;
+    t.node.stop();
+    t.node.disconnect();
+    t.node = undefined;
+  }
+
+  /** A track that's faded out: stop it and let its buffer go. */
+  private drop(t: Track): void {
+    this.stop(t);
+    t.gain?.disconnect();
+    t.gain = undefined;
+    t.buffer = undefined;
   }
 
   /** Browsers only allow audio after a user gesture (called on every tap, click and key). */
