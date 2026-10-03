@@ -73,7 +73,7 @@ export class LocationScene implements Scene {
         const block = seller ? buyBlock : sellBlock;
         const disabled = !actor.goods.some((g) => block(run, id, g.good) === null);
         const actions: TipAction[] = CONFIG.quickTrade
-          ? [{ label: `${verb} 1`, onClick: () => quickTrade(app, ui, id, false), disabled }]
+          ? [{ label: verb, onClick: () => quickTrade(app, ui, id, false), disabled }]
           : [{ label: 'Trade', onClick: open }];
         this.actorTooltip(ui, id, actions);
       }
@@ -146,10 +146,10 @@ export class LocationScene implements Scene {
     const { name } = this.app.data.dealer;
     const desc = 'Sell Stamps for Stars';
     const w = 16 + Math.max(ui.font.measure(name), ui.font.measure(desc));
-    ui.tooltip(w, 6 + 2 * ui.lh, (x, y) => {
+    ui.tooltip(w + (isMobile ? 4 : 0), 6 + 2 * ui.lh, (x, y) => {
       ui.text(name, x, y, C.gold);
       ui.text(desc, x, y + ui.lh, C.muted);
-    }, actions);
+    }, actions, 'bottom');
   }
 
   private actorTooltip(ui: Ui, actorId: string, actions: TipAction[]): void {
@@ -227,15 +227,25 @@ export class LocationScene implements Scene {
 
     const lineW = (l: { text: string; suffix?: string }) =>
       ui.font.measure(l.text) + (l.suffix ? ui.font.measure(`  ${l.suffix}`) : 0);
-    const w = Math.max(210, 52 + Math.max(...rows.flatMap((r) => r.lines.map(lineW))));
+    // a good's icon, then its columns of lines (only one on desktop)
+    const rowW = (r: (typeof rows)[number]) => {
+      const tall = Math.ceil(r.lines.length / r.cols);
+      const cols = Array.from({ length: r.cols }, (_, c) => Math.max(...r.lines.slice(c * tall, (c + 1) * tall).map(lineW)));
+      return 36 + cols.reduce((sum, cw) => sum + cw, 0) + 24 * (r.cols - 1);
+    };
+    // on mobile it fits its lines (docked above the bottom row, its button on the right)
+    const head = ui.font.measure(a.name) + 10 + ui.font.measure(seller ? 'Sells' : 'Buys');
+    const w = isMobile
+      ? 20 + Math.max(head, ...rows.map(rowW))
+      : Math.max(210, 52 + Math.max(...rows.flatMap((r) => r.lines.map(lineW))));
     // mobile puts "Sells" on the name's line
-    const head = isMobile ? ui.lh + 4 : 2 * ui.lh;
-    const h = 6 + head + rows.reduce((sum, r) => sum + r.h, 0);
+    const headH = isMobile ? ui.lh + 4 : 2 * ui.lh;
+    const h = 6 + headH + rows.reduce((sum, r) => sum + r.h, 0);
     ui.tooltip(w, h, (x, y) => {
       ui.text(a.name, x, y, C.gold);
       if (isMobile) ui.text(seller ? 'Sells' : 'Buys', x + ui.font.measure(a.name) + 10, y, C.muted);
       else ui.text(seller ? 'Sells:' : 'Buys:', x, y + ui.lh, C.muted);
-      let gy = y + head;
+      let gy = y + headH;
       for (const r of rows) {
         ui.image(data.goods[r.good].icon, x - 2, gy);
         const tall = Math.ceil(r.lines.length / r.cols);
@@ -251,7 +261,7 @@ export class LocationScene implements Scene {
         }
         gy += r.h;
       }
-    }, actions);
+    }, actions, 'bottom');
   }
 
   /** What the End Day button does: the Detour, or the stamps that pay out tonight. */
