@@ -51,6 +51,9 @@ export interface TipAction {
 
 /** A corner of the screen a touch tooltip can dock in (`ui.tooltip`'s `dock`). */
 export type TipCorner = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
+/** Where a touch tooltip docks: half the screen wide in a corner, or (`bottom`) only as wide as
+ *  its body, centred just above the bottom row, with its buttons in a column down its right side. */
+export type TipDock = TipCorner | 'bottom';
 
 const CORNER = 8;
 const TIP_BTN_H = isMobile ? 30 : 22;
@@ -62,6 +65,8 @@ const SHEET_FLIP = 0.6;
  *  and the Day box along the bottom). */
 const DOCK_W = W / 2 - 8;
 const DOCK_BOTTOM = H - 60;
+/** The width of a `bottom` dock's button column. */
+const SIDE_BTN_W = 96;
 const TOAST_H = isMobile ? 38 : 30;
 /** How long a big centre-screen announcement stays up, in seconds. */
 const ANNOUNCE_T = 2.2;
@@ -195,8 +200,9 @@ export class Ui {
 
   /** How wide a tooltip asked to be `w` wide has inside for its body (the mobile sheet is wider,
    *  a docked one half the screen). */
-  tipWidth(w: number, dock?: TipCorner): number {
+  tipWidth(w: number, dock?: TipDock): number {
     if (!this.touch) return w - 16;
+    if (dock === 'bottom') return w - 20;
     return dock ? DOCK_W - 20 : W - 36;
   }
 
@@ -240,10 +246,10 @@ export class Ui {
   /** Dark tooltip box near the cursor, kept on-screen. `body` draws inside (x, y), `w` wide. On
    *  touch screens it's a sheet across the screen, away from the picked item, with `actions` as
    *  buttons along its bottom (`w` is then the sheet's width; `h` is still the caller's). With a
-   *  `dock`, the touch tooltip is half the screen wide, always in that corner. */
-  tooltip(w: number, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[] = [], dock?: TipCorner): void {
+   *  `dock`, the touch tooltip always goes in the same place (see `TipDock`). */
+  tooltip(w: number, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[] = [], dock?: TipDock): void {
     if (this.touch && this.pickedRect) {
-      this.pickedTooltip(this.pickedRect, h, body, actions, dock);
+      this.pickedTooltip(this.pickedRect, w, h, body, actions, dock);
       return;
     }
     const mx = this.input.x;
@@ -258,30 +264,45 @@ export class Ui {
     });
   }
 
-  private pickedTooltip(at: Rect, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[], dock?: TipCorner): void {
-    const w = dock ? DOCK_W : W - 16;
-    if (actions.length > 0) h += TIP_BTN_H + 8;
-    // in its corner; or across the bottom, or the top when the item is in the bottom half
-    const x = dock === 'topRight' || dock === 'bottomRight' ? W - 8 - w : 8;
+  private pickedTooltip(at: Rect, w: number, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[], dock?: TipDock): void {
+    const side = dock === 'bottom' && actions.length > 0;
+    const bodyW = dock === 'bottom' ? w - 20 : dock ? DOCK_W - 20 : W - 36;
+    if (dock === 'bottom') w += side ? SIDE_BTN_W + 8 : 0;
+    else w = dock ? DOCK_W : W - 16;
+    // side buttons are nearly as tall as the body; otherwise they go along the bottom
+    if (side) h = Math.max(h + 4, actions.length * (TIP_BTN_H + 8) + 8);
+    else if (actions.length > 0) h += TIP_BTN_H + 8;
+    // in its corner or above the bottom row; or across the bottom, or the top when the item is in
+    // the bottom half
+    const x = dock === 'bottom' ? Math.round((W - w) / 2) : dock === 'topRight' || dock === 'bottomRight' ? W - 8 - w : 8;
     const y = dock
       ? dock.startsWith('top') ? SHEET_TOP : DOCK_BOTTOM - h
       : at.y + at.h / 2 < H * SHEET_FLIP ? H - h - 8 : SHEET_TOP;
     const r: Rect = { x, y, w, h };
     this.overlay(() => {
       this.nine('panel_dark', r);
-      body(x + 10, y + 8, w - 20);
+      body(x + 10, y + 8, bodyW);
       this.inPopup = true;
       const i = this.input;
       if (i.released && this.inside(r, i.pressX, i.pressY)) this.tapUsed = true;
-      // the buttons share the bottom, each at most 160 wide, centred
       const gap = 8;
-      const n = Math.max(1, actions.length);
-      const bw = Math.min(160, (w - 20 - gap * (n - 1)) / n);
-      const total = actions.length * bw + gap * (actions.length - 1);
-      actions.forEach((a, j) => {
-        const br: Rect = { x: Math.round(x + (w - total) / 2 + j * (bw + gap)), y: y + h - TIP_BTN_H - 8, w: Math.round(bw), h: TIP_BTN_H };
-        if (this.button(br, a.label, { disabled: a.disabled })) a.onClick();
-      });
+      if (side) {
+        // stacked down the right side, sharing its height
+        const bh = Math.round((h - 16 - (actions.length - 1) * gap) / actions.length);
+        actions.forEach((a, j) => {
+          const br: Rect = { x: x + w - 8 - SIDE_BTN_W, y: y + 8 + j * (bh + gap), w: SIDE_BTN_W, h: bh };
+          if (this.button(br, a.label, { disabled: a.disabled, scale: bh >= 40 ? 2 : 1 })) a.onClick();
+        });
+      } else {
+        // the buttons share the bottom, each at most 160 wide, centred
+        const n = Math.max(1, actions.length);
+        const bw = Math.min(160, (w - 20 - gap * (n - 1)) / n);
+        const total = actions.length * bw + gap * (actions.length - 1);
+        actions.forEach((a, j) => {
+          const br: Rect = { x: Math.round(x + (w - total) / 2 + j * (bw + gap)), y: y + h - TIP_BTN_H - 8, w: Math.round(bw), h: TIP_BTN_H };
+          if (this.button(br, a.label, { disabled: a.disabled })) a.onClick();
+        });
+      }
       this.inPopup = false;
       this.popup = this.picked ? r : null;
     });
