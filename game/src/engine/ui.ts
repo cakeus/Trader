@@ -139,6 +139,8 @@ export class Ui {
       this.tapUsed = true;
       this.picked = this.picked === key ? null : key;
       if (this.picked === null) this.popup = null;
+      // the same click a button makes, when a tap picks something (putting it away is quiet)
+      else this.sfx.play('click');
     }
     if (this.picked !== key) return false;
     this.pickedRect = r;
