@@ -73,7 +73,7 @@ export class LocationScene implements Scene {
         const block = seller ? buyBlock : sellBlock;
         const disabled = !actor.goods.some((g) => block(run, id, g.good) === null);
         const actions: TipAction[] = CONFIG.quickTrade
-          ? [{ label: `${verb} 1`, onClick: () => quickTrade(app, ui, id, false), disabled }]
+          ? [{ label: verb, onClick: () => quickTrade(app, ui, id, false), disabled }]
           : [{ label: 'Trade', onClick: open }];
         this.actorTooltip(ui, id, actions);
       }
