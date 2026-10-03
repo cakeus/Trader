@@ -1,5 +1,6 @@
 import type { Assets } from './assets';
 import { isMobile } from './device';
+import { haptic } from './haptics';
 import type { Sfx } from './audio';
 import type { Fonts, TextOpts } from './font';
 import type { Input } from './input';
@@ -97,6 +98,8 @@ export class Ui {
   private inPopup = false;
   /** This frame's tap landed on a pickable item or the popup (so it doesn't unpick). */
   private tapUsed = false;
+  /** This frame's tap already gave its haptic tick. */
+  private buzzed = false;
 
   constructor(
     readonly ctx: CanvasRenderingContext2D,
@@ -117,10 +120,16 @@ export class Ui {
     return this.active && this.inside(r) && (!this.touch || this.input.down) && !this.underPopup();
   }
 
-  /** Mouse pressed and released inside `r`. */
+  /** Mouse pressed and released inside `r`. On touch screens a tap on anything clickable also
+   *  gives a haptic tick (once a tap, however many things ask). */
   clicked(r: Rect): boolean {
     const i = this.input;
-    return this.active && i.released && this.inside(r) && this.inside(r, i.pressX, i.pressY) && !this.underPopup();
+    const hit = this.active && i.released && this.inside(r) && this.inside(r, i.pressX, i.pressY) && !this.underPopup();
+    if (hit && this.touch && !this.buzzed) {
+      this.buzzed = true;
+      haptic();
+    }
+    return hit;
   }
 
   /** The press is on the picked item's tooltip, and this isn't the tooltip asking. */
@@ -339,6 +348,7 @@ export class Ui {
 
   end(): void {
     this.active = true;
+    this.buzzed = false;
     for (const f of this.floaters) {
       const y = f.y - f.age * 28;
       this.text(f.text, f.x, y, f.color, { align: 'center', shadow: C.shadow });
