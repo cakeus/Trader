@@ -65,8 +65,10 @@ const SHEET_FLIP = 0.6;
  *  and the Day box along the bottom). */
 const DOCK_W = W / 2 - 8;
 const DOCK_BOTTOM = H - 60;
-/** The width of a `bottom` dock's button column. */
+/** The width of a `bottom` dock's button column, and how tall a button in it gets at most (about
+ *  an actor tooltip's name line and one good: a taller box centres its buttons). */
 const SIDE_BTN_W = 96;
+const SIDE_BTN_MAX_H = 52;
 const TOAST_H = isMobile ? 38 : 30;
 /** How long a big centre-screen announcement stays up, in seconds. */
 const ANNOUNCE_T = 2.2;
@@ -287,10 +289,12 @@ export class Ui {
       if (i.released && this.inside(r, i.pressX, i.pressY)) this.tapUsed = true;
       const gap = 8;
       if (side) {
-        // stacked down the right side, sharing its height
-        const bh = Math.round((h - 16 - (actions.length - 1) * gap) / actions.length);
+        // stacked down the right side, sharing its height (up to a cap), centred
+        const n = actions.length;
+        const bh = Math.min(SIDE_BTN_MAX_H, Math.round((h - 16 - (n - 1) * gap) / n));
+        const top = y + Math.round((h - (n * bh + (n - 1) * gap)) / 2);
         actions.forEach((a, j) => {
-          const br: Rect = { x: x + w - 8 - SIDE_BTN_W, y: y + 8 + j * (bh + gap), w: SIDE_BTN_W, h: bh };
+          const br: Rect = { x: x + w - 8 - SIDE_BTN_W, y: top + j * (bh + gap), w: SIDE_BTN_W, h: bh };
           if (this.button(br, a.label, { disabled: a.disabled, scale: bh >= 40 ? 2 : 1 })) a.onClick();
         });
       } else {
