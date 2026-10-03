@@ -49,12 +49,19 @@ export interface TipAction {
   disabled?: boolean;
 }
 
+/** A corner of the screen a touch tooltip can dock in (`ui.tooltip`'s `dock`). */
+export type TipCorner = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
+
 const CORNER = 8;
 const TIP_BTN_H = isMobile ? 30 : 22;
 /** Mobile tooltips are a sheet across the screen, docked at the bottom, or at this y (under the
  *  HUD) when the item tapped is low on the screen (its middle below `SHEET_FLIP` of the height). */
 const SHEET_TOP = 44;
 const SHEET_FLIP = 0.6;
+/** A docked tooltip is half the screen wide, between the HUD and `DOCK_BOTTOM` (clear of the bag
+ *  and the Day box along the bottom). */
+const DOCK_W = W / 2 - 8;
+const DOCK_BOTTOM = H - 60;
 const TOAST_H = isMobile ? 38 : 30;
 /** How long a big centre-screen announcement stays up, in seconds. */
 const ANNOUNCE_T = 2.2;
@@ -186,9 +193,11 @@ export class Ui {
     this.font.draw(this.ctx, s, x, y, color, opts);
   }
 
-  /** How wide a tooltip asked to be `w` wide has inside for its body (the mobile sheet is wider). */
-  tipWidth(w: number): number {
-    return this.touch ? W - 36 : w - 16;
+  /** How wide a tooltip asked to be `w` wide has inside for its body (the mobile sheet is wider,
+   *  a docked one half the screen). */
+  tipWidth(w: number, dock?: TipCorner): number {
+    if (!this.touch) return w - 16;
+    return dock ? DOCK_W - 20 : W - 36;
   }
 
   /** The y to draw text at `scale` so its capitals sit centred in a box at `y`, `h` tall. */
@@ -230,10 +239,11 @@ export class Ui {
 
   /** Dark tooltip box near the cursor, kept on-screen. `body` draws inside (x, y), `w` wide. On
    *  touch screens it's a sheet across the screen, away from the picked item, with `actions` as
-   *  buttons along its bottom (`w` is then the sheet's width; `h` is still the caller's). */
-  tooltip(w: number, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[] = []): void {
+   *  buttons along its bottom (`w` is then the sheet's width; `h` is still the caller's). With a
+   *  `dock`, the touch tooltip is half the screen wide, always in that corner. */
+  tooltip(w: number, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[] = [], dock?: TipCorner): void {
     if (this.touch && this.pickedRect) {
-      this.pickedTooltip(this.pickedRect, w, h, body, actions);
+      this.pickedTooltip(this.pickedRect, h, body, actions, dock);
       return;
     }
     const mx = this.input.x;
@@ -248,12 +258,14 @@ export class Ui {
     });
   }
 
-  private pickedTooltip(at: Rect, _w: number, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[]): void {
-    const w = W - 16;
+  private pickedTooltip(at: Rect, h: number, body: (x: number, y: number, w: number) => void, actions: TipAction[], dock?: TipCorner): void {
+    const w = dock ? DOCK_W : W - 16;
     if (actions.length > 0) h += TIP_BTN_H + 8;
-    // docked at the bottom, or at the top when the item is in the bottom half
-    const x = 8;
-    const y = at.y + at.h / 2 < H * SHEET_FLIP ? H - h - 8 : SHEET_TOP;
+    // in its corner; or across the bottom, or the top when the item is in the bottom half
+    const x = dock === 'topRight' || dock === 'bottomRight' ? W - 8 - w : 8;
+    const y = dock
+      ? dock.startsWith('top') ? SHEET_TOP : DOCK_BOTTOM - h
+      : at.y + at.h / 2 < H * SHEET_FLIP ? H - h - 8 : SHEET_TOP;
     const r: Rect = { x, y, w, h };
     this.overlay(() => {
       this.nine('panel_dark', r);

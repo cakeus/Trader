@@ -1,3 +1,5 @@
+import type { TipCorner } from '../engine/ui';
+
 export type Role = 'supplier' | 'buyer';
 
 export interface GoodDef {
@@ -81,6 +83,8 @@ export interface AreaDef extends WeatherSpots {
   startCash: number;
   /** Animated weather drawn over the map. */
   weather?: Weather;
+  /** Where the map's location tooltip docks on touch screens (top right when unset). */
+  tipCorner?: TipCorner;
   /** Events that start partway through the stay (the latest one started is the one on). */
   events?: AreaEvent[];
 }

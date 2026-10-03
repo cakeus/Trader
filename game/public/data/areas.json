@@ -1,19 +1,19 @@
 [
-  { "id": "bay", "name": "Blossom Bay", "map": "assets/bg/map.png", "fromDay": 1, "startCash": 15,
+  { "id": "bay", "name": "Blossom Bay", "map": "assets/bg/map.png", "fromDay": 1, "startCash": 15, "tipCorner": "topRight",
     "music": "assets/audio/Spring Afternoon.mp3",
     "blurb": "A sunny seaside town where every road ends at the water.",
     "events": [
       { "id": "rainstorm", "name": "Rainstorm!", "fromDay": 15, "weather": "rain", "buyerLimit": 2,
         "blurb": "Dark clouds have rolled in over the bay. Buyers are staying indoors, so they won't take much until you leave Blossom Bay." }
     ] },
-  { "id": "peaks", "name": "Frostpine Peaks", "map": "assets/bg/map_peaks.png", "fromDay": 22, "startCash": 30, "welcome": "Prices are higher up here. Good luck!", "weather": "snow",
+  { "id": "peaks", "name": "Frostpine Peaks", "map": "assets/bg/map_peaks.png", "fromDay": 22, "startCash": 30, "tipCorner": "bottomRight", "welcome": "Prices are higher up here. Good luck!", "weather": "snow",
     "music": "assets/audio/Winter Village Loop.mp3",
     "blurb": "A snowy mountain town of warm windows, crunchy paths, and richer customers.",
     "events": [
       { "id": "blizzard", "name": "Blizzard!", "fromDay": 36, "weather": "blizzard", "snowedIn": true,
         "blurb": "A blizzard has swept over the peaks. Each day one spot is snowed in, and you won't know who's trading there until you trudge over." }
     ] },
-  { "id": "crossing", "name": "Lantern Crossing", "map": "assets/bg/map_crossing.png", "fromDay": 43, "startCash": 60, "welcome": "Prices are higher under these lights. Good luck!", "weather": "lanterns",
+  { "id": "crossing", "name": "Lantern Crossing", "map": "assets/bg/map_crossing.png", "fromDay": 43, "startCash": 60, "tipCorner": "bottomRight", "welcome": "Prices are higher under these lights. Good luck!", "weather": "lanterns",
     "music": "assets/audio/lantern_crossing.mp3",
     "stars": "assets/bg/map_crossing_stars.json", "fireflies": { "x": 440, "y": 98, "w": 80, "h": 46 },
     "blurb": "A busy crossing in the big city, where the lanterns come on as the last trains roll in.",
